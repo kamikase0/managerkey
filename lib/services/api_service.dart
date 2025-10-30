@@ -21,7 +21,7 @@ class ApiService {
           'fecha_hora': salida.fechaHora.toIso8601String(),
           'latitud': salida.latitud,
           'longitud': salida.longitud,
-          'descripcion': salida.descripcion,
+          // 'descripcion': salida.descripcion,
           'observaciones': salida.observaciones,
         }),
       );

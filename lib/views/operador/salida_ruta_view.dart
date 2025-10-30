@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import '../models/salida_ruta_model.dart';
-import '../services/location_service.dart';
-import '../services/database_service.dart';
-import '../services/api_service.dart';
-import '../services/auth_service.dart';
-import '../models/user_model.dart';
+import '../../models/salida_ruta_model.dart';
+import '../../services/location_service.dart';
+import '../../services/database_service.dart';
+import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+import '../../models/user_model.dart';
 
 class SalidaRutaView extends StatefulWidget {
   const SalidaRutaView({Key? key}) : super(key: key);
@@ -14,7 +14,7 @@ class SalidaRutaView extends StatefulWidget {
 }
 
 class _SalidaRutaViewState extends State<SalidaRutaView> {
-  final _descripcionController = TextEditingController();
+  // final _descripcionController = TextEditingController();
   final _observacionesController = TextEditingController();
   bool _switchValue = false;
   bool _isLoading = false;
@@ -420,10 +420,10 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   }
 
   Future<void> _registrarSalida() async {
-    if (_descripcionController.text.isEmpty) {
-      _mostrarError('Por favor ingrese una descripción');
-      return;
-    }
+    // if (_descripcionController.text.isEmpty) {
+    //   _mostrarError('Por favor ingrese una descripción');
+    //   return;
+    // }
 
     setState(() {
       _isLoading = true;
@@ -450,7 +450,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         fechaHora: DateTime.now(),
         latitud: _latitud!,
         longitud: _longitud!,
-        descripcion: _descripcionController.text,
+        //descripcion: _descripcionController.text,
         observaciones: _observacionesController.text,
       );
 
@@ -514,7 +514,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   }
 
   void _limpiarFormulario() {
-    _descripcionController.clear();
+    // _descripcionController.clear();
     _observacionesController.clear();
     setState(() {
       _switchValue = false;
@@ -529,7 +529,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
 
   @override
   void dispose() {
-    _descripcionController.dispose();
+    // _descripcionController.dispose();
     _observacionesController.dispose();
     super.dispose();
   }
