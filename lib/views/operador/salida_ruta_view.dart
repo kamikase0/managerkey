@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../models/salida_ruta_model.dart';
+import '../../models/user_model.dart';
+
+import '../../services/api_service.dart';
+
 import '../../services/location_service.dart';
 import '../../services/database_service.dart';
-import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../models/user_model.dart';
 
 class SalidaRutaView extends StatefulWidget {
   const SalidaRutaView({Key? key}) : super(key: key);
@@ -14,7 +16,9 @@ class SalidaRutaView extends StatefulWidget {
 }
 
 class _SalidaRutaViewState extends State<SalidaRutaView> {
+  final _formKey = GlobalKey<FormState>();
   // final _descripcionController = TextEditingController();
+
   final _observacionesController = TextEditingController();
   bool _switchValue = false;
   bool _isLoading = false;

@@ -19,7 +19,7 @@ class Sidebar extends StatelessWidget {
         {'id': 'operador', 'label': 'Vista Operador', 'icon': Icons.dashboard},
         {'id': 'salida_ruta', 'label': 'Salida de Ruta', 'icon': Icons.exit_to_app},
         {'id': 'llegada_ruta', 'label': 'Llegada de Ruta', 'icon': Icons.flag},
-        {'id': 'Reporte', 'label':'Registrar Reporte','icon': Icons.check}
+        {'id': 'reporte_diario', 'label': 'Registrar Reporte', 'icon': Icons.add_circle}
       ],
       'soporte': [
         {'id': 'soporte', 'label': 'Vista Soporte', 'icon': Icons.support}

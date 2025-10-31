@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:manager_key/views/operador/report_view.dart';
+import 'package:manager_key/views/operador/reporte_view.dart';
 import 'package:manager_key/views/operador/salida_ruta_view.dart';
 import 'package:manager_key/views/operador/llegada_ruta_view.dart';
 import '../models/user_model.dart';
@@ -44,8 +44,8 @@ class _HomePageState extends State<HomePage> {
         return const SalidaRutaView();
       case 'llegada_ruta':
         return const LlegadaRutaView();
-      case 'reporte':
-        return const ReportView();
+      case 'reporte_diario':
+        return const ReporteDiarioView();
       case 'soporte':
         return const SoporteView();
       case 'coordinador':
