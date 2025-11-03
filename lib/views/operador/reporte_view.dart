@@ -17,6 +17,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   final TextEditingController _cInicialiController = TextEditingController();
   final TextEditingController _cFinalController = TextEditingController();
   final TextEditingController _observacionesController = TextEditingController();
+  final TextEditingController _rTotal = TextEditingController();
+  final TextEditingController _cTotal = TextEditingController();
+
+  double diferenciaR = 0;
+  double diferenciaC = 0;
 
   @override
   void dispose() {
@@ -27,6 +32,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     _cInicialiController.dispose();
     _cFinalController.dispose();
     _observacionesController.dispose();
+    _rTotal.dispose();
+    _cTotal.dispose();
     super.dispose();
   }
 
@@ -73,19 +80,46 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
       // Limpiar formulario después de 3 segundos
       Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          _codigoEstacionController.clear();
-          _transmitidoController.clear();
-          _rInicialiController.clear();
-          _rFinalController.clear();
-          _cInicialiController.clear();
-          _cFinalController.clear();
-          _observacionesController.clear();
-        }
+        // if (mounted) {
+        //   _codigoEstacionController.clear();
+        //   _transmitidoController.clear();
+        //   _transmitidoController.clear();
+        //   _rInicialiController.clear();
+        //   _rFinalController.clear();
+        //   _cInicialiController.clear();
+        //   _cFinalController.clear();
+        //   _observacionesController.clear();
+        //   _cTotal.clear();
+        //   _rTotal.clear();
+        // }
+        // }
       });
     }
   }
 
+  void _cleanFormulario(){
+    setState(() {
+      _codigoEstacionController.clear();
+      _transmitidoController.clear();
+      _rInicialiController.clear();
+      _rFinalController.clear();
+      _cInicialiController.clear();
+      _cFinalController.clear();
+      _observacionesController.clear();
+      _cTotal.clear();
+      _rTotal.clear();
+      // diferenciaC = null;
+      // diferenciaR = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Formulario limpiado'),
+        backgroundColor: Colors.blueGrey,
+        duration: Duration(seconds: 2),
+      )
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -125,7 +159,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                 controller: _transmitidoController,
                 decoration: InputDecoration(
                   labelText: 'TRANSMITIDO',
-                  hintText: '12:34',
+                  hintText: '12345',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -133,18 +167,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'El horario es requerido';
+                    return 'El codigo de transmision es requerido';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 24),
-
               // Sección R (Recepción)
-              const Text(
-                'R:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -152,8 +181,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                     child: TextFormField(
                       controller: _rInicialiController,
                       decoration: InputDecoration(
-                        labelText: 'Inicial',
-                        hintText: '02',
+                        labelText: 'R Inicial',
+                        hintText: '2',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -165,6 +194,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                         }
                         return null;
                       },
+                      onChanged: (_) => _calcularDiferencia(),
+                      keyboardType: TextInputType.number,
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -172,8 +203,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                     child: TextFormField(
                       controller: _rFinalController,
                       decoration: InputDecoration(
-                        labelText: 'Final',
-                        hintText: '03',
+                        labelText: 'R Final',
+                        hintText: '32',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -185,6 +216,24 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                         }
                         return null;
                       },
+                      onChanged: (_) => _calcularDiferencia(),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextFormField(
+                      readOnly: true,
+                      controller: _rTotal,
+                      decoration: InputDecoration(
+                        labelText: 'Registros R',
+                        hintText: diferenciaR!.toString() ?? '',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      validator: (_) => null,
                     ),
                   ),
                 ],
@@ -192,10 +241,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
               const SizedBox(height: 24),
 
               // Sección C (Cantidad)
-              const Text(
-                'C:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -203,8 +248,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                     child: TextFormField(
                       controller: _cInicialiController,
                       decoration: InputDecoration(
-                        labelText: 'Inicial',
-                        hintText: '04',
+                        labelText: 'C Inicial',
+                        hintText: '4',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -216,6 +261,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                         }
                         return null;
                       },
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => _calcularDiferencia(),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -223,8 +270,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                     child: TextFormField(
                       controller: _cFinalController,
                       decoration: InputDecoration(
-                        labelText: 'Final',
-                        hintText: '05',
+                        labelText: 'C Final',
+                        hintText: '8',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -236,6 +283,23 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                         }
                         return null;
                       },
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => _calcularDiferencia(),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _cTotal,
+                      decoration: InputDecoration(
+                        labelText: 'registros C',
+                        hintText: '10',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      validator: (value) => null,
                     ),
                   ),
                 ],
@@ -263,23 +327,46 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
               // Botón Registrar
               Center(
-                child: ElevatedButton(
-                  onPressed: _enviarReporte,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
+                child: Column(
+                  children: [
+                    ElevatedButton(
+                      onPressed: _enviarReporte,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                      ),
+                      child: const Text(
+                        'Registrar Llegada',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                  ),
-                  child: const Text(
-                    'Registrar Llegada',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: _cleanFormulario,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                        side: const BorderSide(color: Colors.grey),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                      ),
+                      child: const Text(
+                        'Limpiar Campos',
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ],
@@ -288,4 +375,63 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       ),
     );
   }
+
+
+    // final TextEditingController _inicialController = TextEditingController();
+    // final TextEditingController _finalController = TextEditingController();
+
+    String _mensajeError = '';
+    double? _diferencia;
+
+    void _calcularDiferencia() {
+      // --- Para R (recepción) ---
+      final rInicial = int.tryParse(_rInicialiController.text);
+      final rFinal = int.tryParse(_rFinalController.text);
+
+      if (rInicial != null && rFinal != null) {
+        if (rFinal >= rInicial) {
+          setState(() {
+            diferenciaR = (rFinal - rInicial) + 1;
+            _rTotal.text = diferenciaR!.toString();
+          });
+        } else {
+          // si final < inicial, limpia y muestra error
+          setState(() {
+            _rTotal.clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('El valor final de R debe ser mayor o igual que el inicial'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          });
+        }
+      }
+
+      // --- Para C (cantidad) ---
+      final cInicial = int.tryParse(_cInicialiController.text);
+      final cFinal = int.tryParse(_cFinalController.text);
+
+      if (cInicial != null && cFinal != null) {
+        if (cFinal >= cInicial) {
+          setState(() {
+            diferenciaC = (cFinal - cInicial) + 1;
+            _cTotal.text = diferenciaC!.toString();
+          });
+        } else {
+          setState(() {
+            _cTotal.clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('El valor final de C debe ser mayor o igual que el inicial'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          });
+        }
+      }
+    }
+
 }
