@@ -4,6 +4,7 @@ import '../../models/user_model.dart';
 
 import '../../services/api_service.dart';
 
+import '../../services/firestore_service.dart';
 import '../../services/location_service.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
@@ -32,10 +33,12 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   String _userEmail = 'Cargando...';
   String _welcomeMessage = 'Bienvenido/a';
   User? _currentUser;
+  late FirestoreService _firestoreService;
 
   @override
   void initState() {
     super.initState();
+    _firestoreService = FirestoreService(); //inicializa
     _loadUserData();
   }
 
@@ -85,10 +88,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
             // Switch de Despliegue
             _buildDespliegueSwitch(),
             const SizedBox(height: 24),
-
-            // // Descripción
-            // _buildDescripcionField(),
-            // const SizedBox(height: 16),
 
             // Observaciones
             _buildObservacionesField(),
@@ -294,30 +293,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-  // Widget _buildDescripcionField() {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       const Text(
-  //         'Descripción',
-  //         style: TextStyle(
-  //           fontSize: 16,
-  //           fontWeight: FontWeight.bold,
-  //         ),
-  //       ),
-  //       const SizedBox(height: 8),
-  //       TextField(
-  //         controller: _descripcionController,
-  //         decoration: const InputDecoration(
-  //           border: OutlineInputBorder(),
-  //           hintText: 'Ingrese la descripción de la salida...',
-  //           labelText: 'Descripción de la salida',
-  //         ),
-  //         maxLines: 3,
-  //       ),
-  //     ],
-  //   );
-  // }
 
   Widget _buildObservacionesField() {
     return Column(
@@ -424,11 +399,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   }
 
   Future<void> _registrarSalida() async {
-    // if (_descripcionController.text.isEmpty) {
-    //   _mostrarError('Por favor ingrese una descripción');
-    //   return;
-    // }
-
     setState(() {
       _isLoading = true;
     });
@@ -436,7 +406,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     try {
       // Capturar coordenadas
       final position = await LocationService().getCurrentLocation();
-
       if (position == null) {
         _mostrarError('No se pudo obtener la ubicación');
         return;
@@ -449,33 +418,34 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
             'Long: ${position.longitude.toStringAsFixed(6)}';
       });
 
-      // Crear modelo de salida
+      // Guardar en SQLite local
       final salida = SalidaRuta(
         fechaHora: DateTime.now(),
         latitud: _latitud!,
         longitud: _longitud!,
-        //descripcion: _descripcionController.text,
         observaciones: _observacionesController.text,
       );
 
-      // Guardar en SQLite
-      final id = await DatabaseService().insertSalidaRuta(salida);
+      await DatabaseService().insertSalidaRuta(salida);
 
-      // Intentar enviar a API si hay conexión
+      // GUARDAR EN FIRESTORE si el switch está activado
       if (_switchValue) {
-        final enviado = await ApiService().enviarSalidaRuta(salida);
-        if (enviado) {
-          await DatabaseService().updateSalidaEnviada(id);
-          _mostrarExito('Salida registrada y enviada al servidor');
+        final guardado = await _firestoreService.guardarSalida(
+          latitud: _latitud!,
+          longitud: _longitud!,
+          observaciones: _observacionesController.text,
+        );
+
+        if (guardado) {
+          _mostrarExito('Salida guardada en servidor');
         } else {
-          _mostrarExito('Salida registrada localmente (error al enviar)');
+          _mostrarError('Error al guardar en servidor');
         }
       } else {
-        _mostrarExito('Salida registrada localmente');
+        _mostrarExito('Salida guardada localmente');
       }
 
       _limpiarFormulario();
-
     } catch (e) {
       _mostrarError('Error al registrar salida: $e');
     } finally {
@@ -484,6 +454,125 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       });
     }
   }
+
+  // Future<void> _registrarSalida() async {
+  //   // if (_descripcionController.text.isEmpty) {
+  //   //   _mostrarError('Por favor ingrese una descripción');
+  //   //   return;
+  //   // }
+  //
+  //   setState(() {
+  //     _isLoading = true;
+  //   });
+  //
+  //   try {
+  //     // Capturar coordenadas
+  //     final position = await LocationService().getCurrentLocation();
+  //
+  //     if (position == null) {
+  //       _mostrarError('No se pudo obtener la ubicación');
+  //       return;
+  //     }
+  //
+  //     setState(() {
+  //       _latitud = position.latitude;
+  //       _longitud = position.longitude;
+  //       _coordenadas = 'Lat: ${position.latitude.toStringAsFixed(6)}\n'
+  //           'Long: ${position.longitude.toStringAsFixed(6)}';
+  //     });
+  //
+  //     // Crear modelo de salida
+  //     final salida = SalidaRuta(
+  //       fechaHora: DateTime.now(),
+  //       latitud: _latitud!,
+  //       longitud: _longitud!,
+  //       //descripcion: _descripcionController.text,
+  //       observaciones: _observacionesController.text,
+  //     );
+  //
+  //     // Guardar en SQLite
+  //     final id = await DatabaseService().insertSalidaRuta(salida);
+  //
+  //     // Intentar enviar a API si hay conexión
+  //     if (_switchValue) {
+  //       final enviado = await ApiService().enviarSalidaRuta(salida);
+  //       if (enviado) {
+  //         await DatabaseService().updateSalidaEnviada(id);
+  //         _mostrarExito('Salida registrada y enviada al servidor');
+  //       } else {
+  //         _mostrarExito('Salida registrada localmente (error al enviar)');
+  //       }
+  //     } else {
+  //       _mostrarExito('Salida registrada localmente');
+  //     }
+  //
+  //     _limpiarFormulario();
+  //
+  //   } catch (e) {
+  //     _mostrarError('Error al registrar salida: $e');
+  //   } finally {
+  //     setState(() {
+  //       _isLoading = false;
+  //     });
+  //   }
+  // }
+
+  // Future<void> _registrarSalida() async {
+  //   setState(() {
+  //     _isLoading = true;
+  //   });
+  //
+  //   try {
+  //     // Capturar coordenadas
+  //     final position = await LocationService().getCurrentLocation();
+  //     if (position == null) {
+  //       _mostrarError('No se pudo obtener la ubicación');
+  //       return;
+  //     }
+  //
+  //     setState(() {
+  //       _latitud = position.latitude;
+  //       _longitud = position.longitude;
+  //       _coordenadas = 'Lat: ${position.latitude.toStringAsFixed(6)}\n'
+  //           'Long: ${position.longitude.toStringAsFixed(6)}';
+  //     });
+  //
+  //     // Guardar en SQLite local
+  //     final salida = SalidaRuta(
+  //       fechaHora: DateTime.now(),
+  //       latitud: _latitud!,
+  //       longitud: _longitud!,
+  //       observaciones: _observacionesController.text,
+  //     );
+  //
+  //     await DatabaseService().insertSalidaRuta(salida);
+  //
+  //     // GUARDAR EN FIRESTORE si el switch está activado
+  //     if (_switchValue) {
+  //       final guardado = await _firestoreService.guardarSalida(
+  //         latitud: _latitud!,
+  //         longitud: _longitud!,
+  //         observaciones: _observacionesController.text,
+  //       );
+  //
+  //       if (guardado) {
+  //         _mostrarExito('Salida guardada en servidor');
+  //       } else {
+  //         _mostrarError('Error al guardar en servidor');
+  //       }
+  //     } else {
+  //       _mostrarExito('Salida guardada localmente');
+  //     }
+  //
+  //     _limpiarFormulario();
+  //   } catch (e) {
+  //     _mostrarError('Error al registrar salida: $e');
+  //   } finally {
+  //     setState(() {
+  //       _isLoading = false;
+  //     });
+  //   }
+  // }
 
   void _mostrarError(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(

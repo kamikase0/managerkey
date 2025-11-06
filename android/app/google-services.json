@@ -1,36 +1,26 @@
 {
   "project_info": {
-    "project_number": "680069663937",
-    "project_id": "managerkey-8b963",
-    "storage_bucket": "managerkey-8b963.firebasestorage.app"
+    "project_number": "280380268706",
+    "project_id": "still-vim-476615-t9",
+    "storage_bucket": "still-vim-476615-t9.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:680069663937:android:070791285254514e351840",
+        "mobilesdk_app_id": "1:280380268706:android:77ed48790fb10d727c37fb",
         "android_client_info": {
           "package_name": "com.example.manager_key"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "680069663937-9ivd3svgqksukef6tf060riqa64tptfj.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAaSLKiUl8j-mVQqGFVvX9ykxD3FE5w5tg"
+          "current_key": "AIzaSyC5LVHJ_R8vyhKtDeFBF3PtDiK2xXNi7dc"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "680069663937-9ivd3svgqksukef6tf060riqa64tptfj.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }
