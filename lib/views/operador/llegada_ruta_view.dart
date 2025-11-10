@@ -1,63 +1,122 @@
 import 'package:flutter/material.dart';
-import '../../models/salida_ruta_model.dart';
+import '../../services/location_service.dart';
+import '../../services/database_service.dart';
+import '../../services/api_service.dart';
+import '../../models/registro_despliegue_model.dart';
+import '../../utils/network_utils.dart';
 
 class LlegadaRutaView extends StatefulWidget {
-  const LlegadaRutaView({Key? key}) : super(key:key);
+  const LlegadaRutaView({super.key});
 
   @override
-  _LlegadaRutaViewState createState() => _LlegadaRutaViewState();
+  State<LlegadaRutaView> createState() => _LlegadaRutaViewState();
 }
 
 class _LlegadaRutaViewState extends State<LlegadaRutaView> {
-  final _formKey = GlobalKey<FormState>();
-  // final _descripcionController = TextEditingController();
-  final _observacionesController = TextEditingController();
+  bool _isLoading = false;
+  bool _switchValue = true;
+  final TextEditingController _observacionesController = TextEditingController();
+  String _coordenadas = 'No capturadas';
 
-  double _latitud = 0.0;
-  double _longitud = 0.0;
-  DateTime _fechaHora = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    _obtenerUbicacionActual();
+  void _mostrarSnack(String mensaje, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensaje),
+        backgroundColor: error ? Colors.red : Colors.green,
+      ),
+    );
   }
 
-  void _obtenerUbicacionActual() {
-    // Aquí implementarías la obtención de la ubicación actual
-    // Por ahora usamos valores de ejemplo
-    setState(() {
-      _latitud = -17.7833; // Ejemplo de coordenadas
-      _longitud = -63.1821; // Ejemplo de coordenadas
-      _fechaHora = DateTime.now();
-    });
-  }
+  Future<void> _registrarLlegada() async {
+    setState(() => _isLoading = true);
 
-  void _registrarLlegada() {
-    if (_formKey.currentState!.validate()) {
-      final llegada = SalidaRuta(
-        fechaHora: _fechaHora,
-        latitud: _latitud,
-        longitud: _longitud,
-        //descripcion: _descripcionController.text,
+    try {
+      // Obtener ubicación actual
+      final location = await LocationService().getCurrentLocation();
+      if (location == null) {
+        _mostrarSnack("No se pudo obtener la ubicación actual", error: true);
+        return;
+      }
+
+      // Actualizar coordenadas en UI
+      setState(() {
+        _coordenadas = 'Lat: ${location.latitude.toStringAsFixed(6)}\n'
+            'Long: ${location.longitude.toStringAsFixed(6)}';
+      });
+
+      final db = DatabaseService();
+
+      // Buscar el registro activo (último desplegado sin llegada)
+      final registros = await db.obtenerNoSincronizados();
+
+      if (registros.isEmpty) {
+        _mostrarSnack(
+          "No hay registro de salida activo",
+          error: true,
+        );
+        return;
+      }
+
+      // Buscar el último registro que fue desplegado pero no llegó
+      RegistroDespliegue? registroActivo;
+      for (var r in registros.reversed) {
+        if (r.fueDesplegado && !r.llegoDestino) {
+          registroActivo = r;
+          break;
+        }
+      }
+
+      if (registroActivo == null) {
+        _mostrarSnack(
+          "No hay registro de salida activo",
+          error: true,
+        );
+        return;
+      }
+
+      // Actualizar el registro con datos de llegada
+      final actualizado = registroActivo.copyWith(
+        llegoDestino: true,
+        latitudLlegada: location.latitude.toString(),
+        longitudLlegada: location.longitude.toString(),
+        estado: "COMPLETADO",
+        fechaHoraLlegada: DateTime.now().toIso8601String(),
         observaciones: _observacionesController.text,
-        enviado: false,
+        sincronizar: !_switchValue, // true si NO sincroniza, false si SÍ sincroniza
       );
 
-      // Aquí guardarías en la base de datos local
-      print('Llegada registrada: ${llegada.toMap()}');
+      // Actualizar en base de datos local
+      await db.actualizarRegistroDespliegue(actualizado);
 
-      // Mostrar mensaje de éxito
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Llegada registrada exitosamente'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Intentar enviar al servidor si el switch está activado
+      if (_switchValue) {
+        bool tieneInternet = await NetworkUtils.verificarConexion();
+        if (tieneInternet) {
+          final enviado = await ApiService().enviarRegistroDespliegue(actualizado);
+          if (enviado) {
+            await db.marcarComoSincronizado(actualizado.id!);
+            _mostrarSnack("Llegada registrada y sincronizada correctamente.");
+          } else {
+            _mostrarSnack(
+              "Error al enviar al servidor. Guardado localmente.",
+              error: true,
+            );
+          }
+        } else {
+          _mostrarSnack(
+            "Sin conexión a internet. Guardado localmente.",
+            error: true,
+          );
+        }
+      } else {
+        _mostrarSnack("Llegada registrada localmente.");
+      }
 
-      // Limpiar formulario
-      // _descripcionController.clear();
       _observacionesController.clear();
+    } catch (e) {
+      _mostrarSnack("Error al registrar llegada: $e", error: true);
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -65,65 +124,33 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Registro de Llegada'),
-        backgroundColor: Colors.blue[700],
+        title: const Text("Registrar Llegada"),
+        backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header informativo
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Jose Luis Subia Paz',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[700],
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Operador Rural',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              SizedBox(height: 24),
-
-              // Sección de Despliegue
-              Text(
+              // Título de sección
+              const Text(
                 'Despliegue',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue[700],
+                  color: Colors.blue,
                 ),
               ),
+              const SizedBox(height: 16),
 
-              SizedBox(height: 16),
-
-              // Llegada a destino
+              // Indicador de llegada
               Row(
                 children: [
                   Icon(Icons.location_on, color: Colors.green, size: 20),
-                  SizedBox(width: 8),
-                  Text(
+                  const SizedBox(width: 8),
+                  const Text(
                     'Llegó a destino',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
@@ -132,99 +159,140 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
 
-              SizedBox(height: 16),
-
-              // // Descripción
-              // Text(
-              //   'Descripción',
-              //   style: TextStyle(
-              //     fontWeight: FontWeight.bold,
-              //     color: Colors.grey[700],
-              //   ),
-              // ),
-              // SizedBox(height: 8),
-              // TextFormField(
-              //   controller: _descripcionController,
-              //   maxLines: 3,
-              //   decoration: InputDecoration(
-              //     hintText: 'Ingrese la descripción de la llegada...',
-              //     border: OutlineInputBorder(),
-              //     contentPadding: EdgeInsets.all(12),
-              //   ),
-              //   validator: (value) {
-              //     if (value == null || value.isEmpty) {
-              //       return 'Por favor ingrese una descripción';
-              //     }
-              //     return null;
-              //   },
-              // ),
-              //
-              // SizedBox(height: 16),
-
-              // Observaciones
-              Text(
+              // Campo de observaciones
+              const Text(
                 'Observaciones',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey[700],
+                  fontSize: 16,
                 ),
               ),
-              SizedBox(height: 8),
-              TextFormField(
+              const SizedBox(height: 8),
+              TextField(
                 controller: _observacionesController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: 'Ingrese observaciones adicionales...',
+                decoration: const InputDecoration(
                   border: OutlineInputBorder(),
+                  hintText: "Ingrese observaciones adicionales...",
                   contentPadding: EdgeInsets.all(12),
                 ),
+                maxLines: 3,
               ),
+              const SizedBox(height: 24),
 
-              SizedBox(height: 24),
-
-              // Información de ubicación y fecha
-              Card(
-                color: Colors.grey[50],
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Información de registro:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+              // Información de coordenadas
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.location_on,
+                            size: 18, color: Colors.red.shade600),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Información de registro:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _coordenadas,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Monospace',
+                        fontWeight: FontWeight.w500,
                       ),
-                      SizedBox(height: 8),
-                      Text('Latitud: $_latitud'),
-                      Text('Longitud: $_longitud'),
-                      Text('Fecha: ${_fechaHora.toString()}'),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 24),
 
-              Spacer(),
+              // Switch de sincronización
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Sincronizar con servidor',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _switchValue ? 'Enviar ahora' : 'Guardar localmente',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Switch(
+                      value: _switchValue,
+                      onChanged: (value) =>
+                          setState(() => _switchValue = value),
+                      activeColor: Colors.blue,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
 
               // Botón de registrar
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _registrarLlegada,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _registrarLlegada,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[700],
+                    backgroundColor: Colors.blue.shade700,
                     foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: Text(
-                    'Registrar Llegada',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  icon: _isLoading
+                      ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor:
+                      AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                      : const Icon(Icons.flag),
+                  label: Text(
+                    _isLoading ? 'Procesando...' : 'Registrar llegada',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -237,7 +305,6 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
 
   @override
   void dispose() {
-    //_descripcionController.dispose();
     _observacionesController.dispose();
     super.dispose();
   }

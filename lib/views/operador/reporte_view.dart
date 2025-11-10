@@ -138,7 +138,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
               TextFormField(
                 controller: _codigoEstacionController,
                 decoration: InputDecoration(
-                  labelText: 'Código Estación',
+                  labelText: 'Código Equipo',
                   hintText: 'BIOM-030',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -158,7 +158,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
               TextFormField(
                 controller: _transmitidoController,
                 decoration: InputDecoration(
-                  labelText: 'TRANSMITIDO',
+                  labelText: 'Estación',
                   hintText: '12345',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
