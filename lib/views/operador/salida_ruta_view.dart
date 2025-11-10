@@ -49,9 +49,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     if (user != null) {
       setState(() {
         _currentUser = user;
-        _userName = user.displayName;
-        _userRole = user.roleDisplay;
-        _userEmail = user.emailDisplay;
+        _userName = user.username;
+        _userRole = user.groups.join(', ');
+        _userEmail = user.email;
         _welcomeMessage = welcomeMsg;
       });
     } else {
@@ -78,12 +78,12 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Mensaje de bienvenida
-            _buildWelcomeMessage(),
-            const SizedBox(height: 16),
+            //_buildWelcomeMessage(),
+            //const SizedBox(height: 16),
 
             // Header con información del operador REAL
-            _buildUserHeader(),
-            const SizedBox(height: 24),
+            // _buildUserHeader(),
+            // const SizedBox(height: 24),
 
             // Switch de Despliegue
             _buildDespliegueSwitch(),
@@ -105,148 +105,148 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-  Widget _buildWelcomeMessage() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.waving_hand, color: Colors.green.shade700, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _welcomeMessage,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.green.shade800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Hora: ${_getCurrentTime()}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildWelcomeMessage() {
+  //   return Container(
+  //     width: double.infinity,
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       color: Colors.green.shade50,
+  //       borderRadius: BorderRadius.circular(12),
+  //       border: Border.all(color: Colors.green.shade200),
+  //     ),
+  //     child: Row(
+  //       children: [
+  //         Icon(Icons.waving_hand, color: Colors.green.shade700, size: 24),
+  //         const SizedBox(width: 12),
+  //         Expanded(
+  //           child: Column(
+  //             crossAxisAlignment: CrossAxisAlignment.start,
+  //             children: [
+  //               Text(
+  //                 _welcomeMessage,
+  //                 style: TextStyle(
+  //                   fontSize: 16,
+  //                   fontWeight: FontWeight.w600,
+  //                   color: Colors.green.shade800,
+  //                 ),
+  //               ),
+  //               const SizedBox(height: 4),
+  //               Text(
+  //                 'Hora: ${_getCurrentTime()}',
+  //                 style: TextStyle(
+  //                   fontSize: 12,
+  //                   color: Colors.green.shade600,
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
-  Widget _buildUserHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Información principal
-          Row(
-            children: [
-              Icon(Icons.person, size: 20, color: Colors.blue.shade700),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _userName,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade900,
-                      ),
-                    ),
-                    Text(
-                      _userRole,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-          Divider(height: 1, color: Colors.blue.shade200),
-          const SizedBox(height: 12),
-
-          // Información de contacto
-          Row(
-            children: [
-              Icon(Icons.email, size: 16, color: Colors.blue.shade600),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _userEmail,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.blue.shade800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          Row(
-            children: [
-              Icon(Icons.assignment_ind, size: 16, color: Colors.blue.shade600),
-              const SizedBox(width: 8),
-              Text(
-                'ID: ${_currentUser?.id ?? 'N/A'}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.blue.shade800,
-                ),
-              ),
-            ],
-          ),
-
-          if (_currentUser?.isStaff == true) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.verified_user, size: 16, color: Colors.green.shade600),
-                const SizedBox(width: 8),
-                Text(
-                  'Usuario Staff',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.green.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+  // Widget _buildUserHeader() {
+  //   return Container(
+  //     width: double.infinity,
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       color: Colors.blue.shade50,
+  //       borderRadius: BorderRadius.circular(8),
+  //       border: Border.all(color: Colors.blue.shade200),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         // Información principal
+  //         Row(
+  //           children: [
+  //             Icon(Icons.person, size: 20, color: Colors.blue.shade700),
+  //             const SizedBox(width: 8),
+  //             Expanded(
+  //               child: Column(
+  //                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                 children: [
+  //                   Text(
+  //                     _userName,
+  //                     style: TextStyle(
+  //                       fontSize: 16,
+  //                       fontWeight: FontWeight.bold,
+  //                       color: Colors.blue.shade900,
+  //                     ),
+  //                   ),
+  //                   Text(
+  //                     _userRole,
+  //                     style: TextStyle(
+  //                       fontSize: 14,
+  //                       color: Colors.blue.shade700,
+  //                       fontWeight: FontWeight.w500,
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //
+  //         const SizedBox(height: 12),
+  //         Divider(height: 1, color: Colors.blue.shade200),
+  //         const SizedBox(height: 12),
+  //
+  //         // Información de contacto
+  //         Row(
+  //           children: [
+  //             Icon(Icons.email, size: 16, color: Colors.blue.shade600),
+  //             const SizedBox(width: 8),
+  //             Expanded(
+  //               child: Text(
+  //                 _userEmail,
+  //                 style: TextStyle(
+  //                   fontSize: 14,
+  //                   color: Colors.blue.shade800,
+  //                 ),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //
+  //         const SizedBox(height: 8),
+  //
+  //         Row(
+  //           children: [
+  //             Icon(Icons.assignment_ind, size: 16, color: Colors.blue.shade600),
+  //             const SizedBox(width: 8),
+  //             Text(
+  //               'ID: ${_currentUser?.id ?? 'N/A'}',
+  //               style: TextStyle(
+  //                 fontSize: 14,
+  //                 color: Colors.blue.shade800,
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //
+  //         if (_currentUser?.isStaff == true) ...[
+  //           const SizedBox(height: 8),
+  //           Row(
+  //             children: [
+  //               Icon(Icons.verified_user, size: 16, color: Colors.green.shade600),
+  //               const SizedBox(width: 8),
+  //               Text(
+  //                 'Usuario Staff',
+  //                 style: TextStyle(
+  //                   fontSize: 14,
+  //                   color: Colors.green.shade700,
+  //                   fontWeight: FontWeight.w500,
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ],
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildDespliegueSwitch() {
     return Container(

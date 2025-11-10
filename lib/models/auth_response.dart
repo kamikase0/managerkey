@@ -13,9 +13,18 @@ class AuthResponse {
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
     return AuthResponse(
-      refresh: json['refresh'],
-      access: json['access'],
+      refresh: json['refresh'] ?? '',
+      access: json['access'] ?? '',
       user: User.fromJson(json['user']),
     );
+  }
+
+  // ✅ Agregamos este método para resolver tu error
+  Map<String, dynamic> toJson() {
+    return {
+      'refresh': refresh,
+      'access': access,
+      'user': user.toJson(),
+    };
   }
 }

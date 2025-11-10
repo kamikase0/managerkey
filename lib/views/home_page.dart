@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:manager_key/views/operador/reporte_view.dart';
 import 'package:manager_key/views/operador/salida_ruta_view.dart';
 import 'package:manager_key/views/operador/llegada_ruta_view.dart';
+import 'package:manager_key/views/tecnico/recepcion_view.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../widgets/sidebar.dart';
@@ -48,6 +49,8 @@ class _HomePageState extends State<HomePage> {
         return const ReporteDiarioView();
       case 'soporte':
         return const SoporteView();
+      case 'recepcion':
+        return const RecepcionView();
       case 'coordinador':
         return const CoordinadorView();
       default:
@@ -69,8 +72,8 @@ class _HomePageState extends State<HomePage> {
           builder: (context, snapshot) {
             final welcomeMsg = snapshot.data ?? 'Sistema de Gestión';
             return Text(
-              welcomeMsg.length > 30
-                  ? '${welcomeMsg.substring(0, 30)}...'
+              welcomeMsg.length > 10
+                  ? '${welcomeMsg.substring(0, 10)}...'
                   : welcomeMsg,
             );
           },
@@ -81,12 +84,12 @@ class _HomePageState extends State<HomePage> {
             future: AuthService().getCurrentUser(),
             builder: (context, snapshot) {
               final user = snapshot.data;
-              if (user != null && user.email.isNotEmpty) {
+              if (user != null && user.groups.length>0) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Center(
                     child: Text(
-                      user.email,
+                      user.groups.join(', '),
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),

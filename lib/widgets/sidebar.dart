@@ -17,7 +17,7 @@ class Sidebar extends StatelessWidget {
     final menuItems = {
       'operador': [
         {'id': 'operador', 'label': 'Vista Operador', 'icon': Icons.dashboard},
-        {'id': 'salida_ruta', 'label': 'Salida de Ruta', 'icon': Icons.exit_to_app},
+        {'id': 'salida_ruta', 'label': 'Salida de Ruta', 'icon': Icons.account_balance},
         {'id': 'llegada_ruta', 'label': 'Llegada de Ruta', 'icon': Icons.flag},
         {'id': 'reporte_diario', 'label': 'Registrar Reporte', 'icon': Icons.add_chart}
       ],
