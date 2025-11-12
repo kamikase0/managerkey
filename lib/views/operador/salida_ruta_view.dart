@@ -6,10 +6,11 @@ import '../../services/location_service.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
-import '../../utils/network_utils.dart';
 
 class SalidaRutaView extends StatefulWidget {
-  const SalidaRutaView({Key? key}) : super(key: key);
+  final int idOperador;
+
+  const SalidaRutaView({Key? key, required this.idOperador}) : super(key: key);
 
   @override
   _SalidaRutaViewState createState() => _SalidaRutaViewState();
@@ -18,7 +19,6 @@ class SalidaRutaView extends StatefulWidget {
 class _SalidaRutaViewState extends State<SalidaRutaView> {
   final _observacionesController = TextEditingController();
   final _destino = TextEditingController();
-  //final  = null;
 
   bool _sincronizarConServidor = false;
   bool _isLoading = false;
@@ -44,6 +44,8 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         _userRole = user.groups.join(', ');
         _userEmail = user.email;
       });
+      print('✅ Usuario cargado: ${user.username}');
+      print('🔑 ID Operador a usar: ${widget.idOperador}');
     } else {
       setState(() {
         _userName = 'Usuario No Identificado';
@@ -74,40 +76,39 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       });
 
       final ahora = DateTime.now();
+
+      // ✅ Usar widget.idOperador en lugar de user.id
       final registro = RegistroDespliegue(
         destino: _destino.text,
         latitud: position.latitude.toString(),
         longitud: position.longitude.toString(),
         descripcionReporte: null,
-        estado: "DESPLIEGUE", // Estado inicial
+        estado: "DESPLIEGUE",
         sincronizar: _sincronizarConServidor,
         observaciones: _observacionesController.text,
         incidencias: "",
         fechaHora: ahora.toIso8601String(),
-        operadorId: _currentUser?.id ?? 1,
+        operadorId: widget.idOperador, // 🎯 Usar idOperador del parámetro
         sincronizado: false,
       );
 
       final db = DatabaseService();
       final localId = await db.insertRegistroDespliegue(registro);
+      print('✅ Registro de salida creado con ID: $localId');
 
       if (_sincronizarConServidor) {
-        final tieneInternet =
-        await SyncService().verificarConexion();
+        final tieneInternet = await SyncService().verificarConexion();
         if (tieneInternet) {
           final apiService = ApiService();
-          final enviado =
-          await apiService.enviarRegistroDespliegue(registro);
+          final enviado = await apiService.enviarRegistroDespliegue(registro);
           if (enviado) {
             await db.marcarComoSincronizado(localId);
             _mostrarExito('✅ Despliegue enviado al servidor');
           } else {
-            _mostrarError(
-                '⚠️ Error al enviar. Guardado para sincronizar después.');
+            _mostrarError('⚠️ Error al enviar. Guardado para sincronizar después.');
           }
         } else {
-          _mostrarError(
-              '📡 Sin conexión. Se sincronizará cuando haya internet.');
+          _mostrarError('📡 Sin conexión. Se sincronizará cuando haya internet.');
         }
       } else {
         _mostrarExito('✅ Despliegue guardado localmente');
@@ -115,6 +116,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
 
       _limpiarFormulario();
     } catch (e) {
+      print('❌ Error al registrar salida: $e');
       _mostrarError('Error al registrar salida: $e');
     } finally {
       setState(() => _isLoading = false);
@@ -135,6 +137,8 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildUserInfoCard(),
+              const SizedBox(height: 24),
               _buildDestinoField(),
               const SizedBox(height: 24),
               _buildObservacionesField(),
@@ -147,6 +151,30 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildUserInfoCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Información del Operador',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('Usuario: $_userName', style: const TextStyle(fontSize: 13)),
+          Text('ID Operador: ${widget.idOperador}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+          Text('Email: $_userEmail', style: const TextStyle(fontSize: 13)),
+        ],
       ),
     );
   }
@@ -189,25 +217,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       ],
     );
   }
-
-  // Widget _buildReporteField() {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       const Text('Descripción del Reporte',
-  //           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-  //       const SizedBox(height: 8),
-  //       TextField(
-  //         controller: _descripcioReporteController,
-  //         decoration: InputDecoration(
-  //           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-  //           hintText: 'Descripción adicional del reporte...',
-  //         ),
-  //         maxLines: 2,
-  //       ),
-  //     ],
-  //   );
-  // }
 
   Widget _buildCoordenadasInfo() {
     return Container(

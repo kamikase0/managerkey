@@ -22,6 +22,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String _activeView = 'operador';
   String _userGroup = 'operador';
+  String _tipoOperador = 'Operador Urbano';
+  int? _idOperador;
+  User? _currentUser;
 
   @override
   void initState() {
@@ -30,29 +33,62 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadUserData() async {
-    final group = await AuthService().getUserGroup();
+    try {
+      final user = await AuthService().getCurrentUser();
+
+      if (user != null) {
+        setState(() {
+          _currentUser = user;
+          _userGroup = user.primaryGroup;
+          _tipoOperador = user.tipoOperador ?? 'Operador Urbano';
+          _idOperador = user.idOperador;
+          // Establecer vista inicial según tipo de operador
+          _activeView = user.isOperadorRural ? 'operador' : 'reporte_diario';
+        });
+
+        print('✅ Usuario cargado: ${user.username}');
+        print('📍 Tipo Operador: $_tipoOperador');
+        print('🔑 ID Operador: $_idOperador');
+      } else {
+        _setDefaultValues();
+      }
+    } catch (e) {
+      print('❌ Error al cargar usuario: $e');
+      _setDefaultValues();
+    }
+  }
+
+  void _setDefaultValues() {
     setState(() {
-      _userGroup = group ?? 'operador';
-      _activeView = _userGroup;
+      _userGroup = 'operador';
+      _tipoOperador = 'Operador Urbano';
+      _activeView = 'reporte_diario';
+      _idOperador = null;
     });
   }
 
   Widget _getCurrentView() {
     switch (_activeView) {
+    // Vistas comunes
       case 'operador':
         return const OperadorView();
-      case 'salida_ruta':
-        return const SalidaRutaView();
-      case 'llegada_ruta':
-        return const LlegadaRutaView();
       case 'reporte_diario':
         return const ReporteDiarioView();
+
+    // Vistas solo para Operador Rural
+      case 'salida_ruta':
+        return SalidaRutaView(idOperador: _idOperador ?? 0);
+      case 'llegada_ruta':
+        return LlegadaRutaView(idOperador: _idOperador ?? 0);
+
+    // Vistas de otros roles
       case 'soporte':
         return const SoporteView();
       case 'recepcion':
         return const RecepcionView();
       case 'coordinador':
         return const CoordinadorView();
+
       default:
         return const OperadorView();
     }
@@ -79,18 +115,28 @@ class _HomePageState extends State<HomePage> {
           },
         ),
         actions: [
-          // Mostrar email del usuario en el AppBar
+          // Mostrar información del usuario en el AppBar
           FutureBuilder<User?>(
             future: AuthService().getCurrentUser(),
             builder: (context, snapshot) {
               final user = snapshot.data;
-              if (user != null && user.groups.length>0) {
+              if (user != null && user.groups.isNotEmpty) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Center(
-                    child: Text(
-                      user.groups.join(', '),
-                      style: const TextStyle(fontSize: 12),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          user.groups.join(', '),
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        if (user.tipoOperador != null)
+                          Text(
+                            user.tipoOperador!,
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                      ],
                     ),
                   ),
                 );
@@ -111,9 +157,11 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             _activeView = view;
           });
-          Navigator.of(context).pop(); // Cerrar el drawer
+          Navigator.of(context).pop();
         },
         userGroup: _userGroup,
+        tipoOperador: _tipoOperador,
+        isOperadorRural: _currentUser?.isOperadorRural ?? false,
       ),
       body: _getCurrentView(),
     );
