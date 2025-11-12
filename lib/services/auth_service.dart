@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/enviroment.dart';
 import '../models/auth_response.dart';
 import '../models/user_model.dart';
 
@@ -12,7 +13,7 @@ class AuthService {
   static const String _authKey = 'auth_tokens';
   static const String _userKey = 'user_data';
 
-  static const String _baseUrl = 'http://34.176.50.193:8000/api/token/';
+  static const String _baseUrl = '${Enviroment.apiUrl}token/';
 
   Future<AuthResponse> loginWithEmail(String username, String password) async {
     final url = Uri.parse(_baseUrl);
@@ -28,14 +29,6 @@ class AuthService {
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-
-      // Estructura esperada del backend:
-      // {
-      //   "refresh": "...",
-      //   "access": "...",
-      //   "user": { "id":2, "username":"juan", "email":"x", "groups":["operador"] }
-      // }
-
       final authResponse = AuthResponse.fromJson(data);
 
       await _saveAuthData(authResponse);

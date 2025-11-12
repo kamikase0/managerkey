@@ -34,19 +34,17 @@ class DatabaseService {
       CREATE TABLE registros_despliegue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         destino TEXT NOT NULL,
-        latitud_despliegue TEXT,
-        longitud_despliegue TEXT,
-        latitud_llegada TEXT,
-        longitud_llegada TEXT,
-        estado TEXT NOT NULL DEFAULT 'TRANSMITIDO',
-        fue_desplegado INTEGER NOT NULL DEFAULT 1,
-        llego_destino INTEGER NOT NULL DEFAULT 0,
-        fecha_hora_salida TEXT NOT NULL,
-        fecha_hora_llegada TEXT,
-        operador_id INTEGER NOT NULL,
-        observaciones TEXT,
+        latitud TEXT,
+        longitud TEXT,
+        descripcion_reporte TEXT,
+        estado TEXT NOT NULL DEFAULT 'DESPLIEGUE',
         sincronizar INTEGER NOT NULL DEFAULT 0,
-        sincronizado INTEGER NOT NULL DEFAULT 0
+        observaciones TEXT,
+        incidencias TEXT,
+        fecha_hora TEXT NOT NULL,
+        operador_id INTEGER NOT NULL,
+        sincronizado INTEGER NOT NULL DEFAULT 0,
+        fecha_sincronizacion TEXT
       )
     ''');
   }

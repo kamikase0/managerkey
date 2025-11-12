@@ -9,18 +9,6 @@ allprojects {
     }
 }
 
-//android {
-//    ndkVersion = "27.0.12077973"
-//    compileSdk 34
-//
-//    defaultConfig {
-//        minSdkVersion 21
-//        targetSdkVersion 34
-//    }
-//    // ... resto de tu configuración
-//}
-
-
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
 rootProject.layout.buildDirectory.value(newBuildDir)
 
@@ -38,8 +26,9 @@ tasks.register<Delete>("clean") {
 
 buildscript {
     dependencies {
-        classpath("com.android.tools.build:gradle:8.7.0")
+        classpath("com.android.tools.build:gradle:7.3.0")
         classpath("com.google.gms:google-services:4.4.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.7.10")
     }
 }
 

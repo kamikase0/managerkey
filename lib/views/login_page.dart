@@ -16,6 +16,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _showPassword = false;
 
   void _quickLogin(String profile) {
     final userData = {
@@ -99,7 +100,7 @@ class _LoginPageState extends State<LoginPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'Generador de Llaves',
+                      'Login',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -123,11 +124,22 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Contraseña',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _showPassword ? Icons.visibility : Icons.visibility_off,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _showPassword = !_showPassword;
+                            });
+                          },
+                        ),
                       ),
-                      obscureText: true,
+                      obscureText: !_showPassword,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Por favor ingresa tu contraseña';
@@ -157,49 +169,49 @@ class _LoginPageState extends State<LoginPage> {
                             : const Text('Iniciar Sesión'),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    const Divider(),
-                    const Text(
-                      'Acceso rápido:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _quickLogin('operador'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.lightBlueAccent,
-                            ),
-                            child: const Text('Ope'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _quickLogin('soporte'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.lightBlueAccent,
-                            ),
-                            child: const Text('Sop'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _quickLogin('coordinador'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.lightBlueAccent,
-                            ),
-                            child: const Text('Cord'),
-                          ),
-                        ),
-                      ],
-                    ),
+                    // const SizedBox(height: 24),
+                    // const Divider(),
+                    // const Text(
+                    //   'Acceso rápido:',
+                    //   style: TextStyle(
+                    //     fontWeight: FontWeight.bold,
+                    //     color: Colors.grey,
+                    //   ),
+                    // ),
+                    // const SizedBox(height: 16),
+                    // Row(
+                    //   children: [
+                    //     Expanded(
+                    //       child: ElevatedButton(
+                    //         onPressed: () => _quickLogin('operador'),
+                    //         style: ElevatedButton.styleFrom(
+                    //           backgroundColor: Colors.lightBlueAccent,
+                    //         ),
+                    //         child: const Text('Ope'),
+                    //       ),
+                    //     ),
+                    //     const SizedBox(width: 8),
+                    //     Expanded(
+                    //       child: ElevatedButton(
+                    //         onPressed: () => _quickLogin('soporte'),
+                    //         style: ElevatedButton.styleFrom(
+                    //           backgroundColor: Colors.lightBlueAccent,
+                    //         ),
+                    //         child: const Text('Sop'),
+                    //       ),
+                    //     ),
+                    //     const SizedBox(width: 8),
+                    //     Expanded(
+                    //       child: ElevatedButton(
+                    //         onPressed: () => _quickLogin('coordinador'),
+                    //         style: ElevatedButton.styleFrom(
+                    //           backgroundColor: Colors.lightBlueAccent,
+                    //         ),
+                    //         child: const Text('Cord'),
+                    //       ),
+                    //     ),
+                    //   ],
+                    // ),
                   ],
                 ),
               ),
