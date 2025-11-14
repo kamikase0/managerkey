@@ -1,3 +1,4 @@
+// lib/services/database_service.dart (ACTUALIZADO)
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/registro_despliegue_model.dart';
@@ -23,13 +24,14 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDatabase,
+      onUpgrade: _upgradeDatabase,
     );
   }
 
   Future<void> _createDatabase(Database db, int version) async {
-    // Crear tabla para registros de despliegue
+    // Tabla registros de despliegue (EXISTENTE)
     await db.execute('''
       CREATE TABLE registros_despliegue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,9 +49,54 @@ class DatabaseService {
         fecha_sincronizacion TEXT
       )
     ''');
+
+    // Tabla reportes diarios (NUEVA)
+    await db.execute('''
+      CREATE TABLE reportes_diarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha_reporte TEXT NOT NULL,
+        contador_inicial_c TEXT NOT NULL,
+        contador_final_c TEXT NOT NULL,
+        contador_inicial_r TEXT NOT NULL,
+        contador_final_r TEXT NOT NULL,
+        incidencias TEXT,
+        observaciones TEXT,
+        operador INTEGER NOT NULL,
+        estacion INTEGER NOT NULL,
+        estado TEXT DEFAULT 'TRANSMITIDO',
+        sincronizar INTEGER DEFAULT 1,
+        synced INTEGER DEFAULT 0,
+        updated_at TEXT
+      )
+    ''');
   }
 
-  // Insertar un nuevo registro de despliegue
+  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Crear tabla de reportes si no existe
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS reportes_diarios (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fecha_reporte TEXT NOT NULL,
+          contador_inicial_c TEXT NOT NULL,
+          contador_final_c TEXT NOT NULL,
+          contador_inicial_r TEXT NOT NULL,
+          contador_final_r TEXT NOT NULL,
+          incidencias TEXT,
+          observaciones TEXT,
+          operador INTEGER NOT NULL,
+          estacion INTEGER NOT NULL,
+          estado TEXT DEFAULT 'TRANSMITIDO',
+          sincronizar INTEGER DEFAULT 1,
+          synced INTEGER DEFAULT 0,
+          updated_at TEXT
+        )
+      ''');
+    }
+  }
+
+  // ========== MÉTODOS PARA REGISTROS DE DESPLIEGUE (EXISTENTES) ==========
+
   Future<int> insertRegistroDespliegue(RegistroDespliegue registro) async {
     try {
       final db = await database;
@@ -65,7 +112,6 @@ class DatabaseService {
     }
   }
 
-  // Actualizar un registro de despliegue
   Future<int> actualizarRegistroDespliegue(RegistroDespliegue registro) async {
     try {
       final db = await database;
@@ -86,7 +132,6 @@ class DatabaseService {
     }
   }
 
-  // Obtener todos los registros
   Future<List<RegistroDespliegue>> obtenerTodosRegistros() async {
     try {
       final db = await database;
@@ -98,7 +143,6 @@ class DatabaseService {
     }
   }
 
-  // Obtener registros no sincronizados
   Future<List<RegistroDespliegue>> obtenerNoSincronizados() async {
     try {
       final db = await database;
@@ -114,7 +158,6 @@ class DatabaseService {
     }
   }
 
-  // Obtener registros activos (desplegados pero sin llegada)
   Future<List<RegistroDespliegue>> obtenerRegistrosActivos() async {
     try {
       final db = await database;
@@ -130,7 +173,6 @@ class DatabaseService {
     }
   }
 
-  // Marcar un registro como sincronizado
   Future<void> marcarComoSincronizado(int id) async {
     try {
       final db = await database;
@@ -146,7 +188,6 @@ class DatabaseService {
     }
   }
 
-  // Obtener un registro por ID
   Future<RegistroDespliegue?> obtenerRegistroPorId(int id) async {
     try {
       final db = await database;
@@ -165,7 +206,6 @@ class DatabaseService {
     }
   }
 
-  // Eliminar un registro
   Future<void> eliminarRegistro(int id) async {
     try {
       final db = await database;
@@ -180,7 +220,6 @@ class DatabaseService {
     }
   }
 
-  // Limpiar todos los datos (útil para testing)
   Future<void> limpiarBaseDatos() async {
     try {
       final db = await database;
@@ -188,6 +227,132 @@ class DatabaseService {
       print('Base de datos limpiada');
     } catch (e) {
       print('Error al limpiar base de datos: $e');
+    }
+  }
+
+  // ========== MÉTODOS PARA REPORTES DIARIOS (NUEVOS) ==========
+
+  /// Insertar reporte
+  Future<int> insertReporte(Map<String, dynamic> data) async {
+    try {
+      final db = await database;
+      final result = await db.insert(
+        'reportes_diarios',
+        {
+          ...data,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      print('✅ Reporte insertado con ID: $result');
+      return result;
+    } catch (e) {
+      print('❌ Error al insertar reporte: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtener reportes no sincronizados
+  Future<List<Map<String, dynamic>>> getUnsyncedReportes() async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'reportes_diarios',
+        where: 'synced = ?',
+        whereArgs: [0],
+        orderBy: 'updated_at ASC',
+      );
+      print('📋 Reportes no sincronizados encontrados: ${result.length}');
+      return result;
+    } catch (e) {
+      print('❌ Error al obtener reportes sin sincronizar: $e');
+      return [];
+    }
+  }
+
+  /// Obtener todos los reportes
+  Future<List<Map<String, dynamic>>> getReportes() async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'reportes_diarios',
+        orderBy: 'fecha_reporte DESC',
+      );
+      print('📊 Total de reportes: ${result.length}');
+      return result;
+    } catch (e) {
+      print('❌ Error al obtener reportes: $e');
+      return [];
+    }
+  }
+
+  /// Marcar reporte como sincronizado
+  Future<int> markReporteAsSynced(int id) async {
+    try {
+      final db = await database;
+      final result = await db.update(
+        'reportes_diarios',
+        {
+          'synced': 1,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      print('✅ Reporte $id marcado como sincronizado');
+      return result;
+    } catch (e) {
+      print('❌ Error al marcar reporte como sincronizado: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtener reporte por ID
+  Future<Map<String, dynamic>?> getReporteById(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'reportes_diarios',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return result.isNotEmpty ? result.first : null;
+    } catch (e) {
+      print('❌ Error al obtener reporte por ID: $e');
+      return null;
+    }
+  }
+
+  /// Eliminar reporte
+  Future<int> deleteReporte(int id) async {
+    try {
+      final db = await database;
+      final result = await db.delete(
+        'reportes_diarios',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      print('🗑️ Reporte $id eliminado');
+      return result;
+    } catch (e) {
+      print('❌ Error al eliminar reporte: $e');
+      rethrow;
+    }
+  }
+
+  /// Contar reportes pendientes
+  Future<int> countUnsyncedReportes() async {
+    try {
+      final db = await database;
+      final result = await db.rawQuery(
+          'SELECT COUNT(*) as count FROM reportes_diarios WHERE synced = 0'
+      );
+      final count = Sqflite.firstIntValue(result) ?? 0;
+      print('📈 Reportes pendientes: $count');
+      return count;
+    } catch (e) {
+      print('❌ Error al contar reportes sin sincronizar: $e');
+      return 0;
     }
   }
 }

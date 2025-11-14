@@ -1,144 +1,96 @@
-import 'package:firebase_core/firebase_core.dart';
+// main.dart (CORREGIDO - Versión Final)
 import 'package:flutter/material.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'dart:async';
-import 'firebase_options.dart';
-import 'services/auth_service.dart';
-import 'services/sync_service.dart';
+import 'package:provider/provider.dart';
+import 'services/database_service.dart';
+import 'services/api_service.dart';
+import 'services/reporte_sync_service.dart';
 import 'views/login_page.dart';
-import 'views/home_page.dart';
+import 'views/home_page.dart'; // Ajusta según tu estructura
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+
+  // Inicializar servicios
+  final dbService = DatabaseService();
+  final apiService = ApiService();
+
+  // Inicializar base de datos
+  await dbService.database;
+
+  // Crear ReporteSyncService (sin inicializar aún, esperamos el token del login)
+  final reporteSyncService = ReporteSyncService(
+    databaseService: dbService,
+    apiService: apiService,
   );
-  runApp(const MyApp());
+
+  runApp(MyApp(
+    dbService: dbService,
+    apiService: apiService,
+    reporteSyncService: reporteSyncService,
+  ));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class MyApp extends StatefulWidget {
+  final DatabaseService dbService;
+  final ApiService apiService;
+  final ReporteSyncService reporteSyncService;
+
+  const MyApp({
+    required this.dbService,
+    required this.apiService,
+    required this.reporteSyncService,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Administrador de LLaves',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: const AuthWrapper(),
-    );
-  }
+  State<MyApp> createState() => _MyAppState();
 }
 
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({Key? key}) : super(key: key);
-
-  @override
-  _AuthWrapperState createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  bool _isAuthenticated = false;
-  late StreamSubscription<dynamic> _connectivitySubscription;
-  final SyncService _syncService = SyncService();
-
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _checkAuth();
-    _initializeConnectivityListener();
-  }
-
-  /// =============================
-  /// 📱 Verificar autenticación
-  /// =============================
-  Future<void> _checkAuth() async {
-    final authenticated = await AuthService().isAuthenticated();
-    setState(() {
-      _isAuthenticated = authenticated;
-    });
-  }
-
-  /// =============================
-  /// 📡 Listener de Conectividad
-  /// =============================
-  void _initializeConnectivityListener() {
-    _connectivitySubscription = Connectivity()
-        .onConnectivityChanged
-        .listen((result) async {
-      print('📡 Estado de conectividad: $result');
-
-      bool tieneConexion = false;
-
-      // Manejar si es una lista
-      if (result is List<ConnectivityResult>) {
-        tieneConexion = result == (ConnectivityResult.mobile) ||
-            result == (ConnectivityResult.wifi);
-      }
-      // Manejar si es un único valor
-      else if (result is ConnectivityResult) {
-        tieneConexion = result == ConnectivityResult.mobile ||
-            result == ConnectivityResult.wifi;
-      } else {
-        // Fallback para otros tipos
-        tieneConexion = false;
-      }
-
-      if (tieneConexion) {
-        print('✅ Conexión detectada, iniciando sincronización...');
-        await _syncService.sincronizarRegistrosPendientes();
-      } else {
-        print('❌ Sin conexión a internet');
-      }
-    });
-
-    // Verificar conexión inicial al iniciar la app
-    _verificarConexionInicial();
-  }
-
-  /// =============================
-  /// 🔍 Verificar conexión inicial
-  /// =============================
-  Future<void> _verificarConexionInicial() async {
-    final tieneInternet = await _syncService.verificarConexion();
-    if (tieneInternet) {
-      print('📤 App iniciada con conexión, sincronizando registros pendientes...');
-      await _syncService.sincronizarRegistrosPendientes();
-    }
-  }
-
-  /// =============================
-  /// ✅ Manejo de login exitoso
-  /// =============================
-  void _handleLoginSuccess() {
-    setState(() {
-      _isAuthenticated = true;
-    });
-    // Intentar sincronizar después de login
-    _verificarConexionInicial();
-  }
-
-  /// =============================
-  /// ❌ Manejo de logout
-  /// =============================
-  void _handleLogout() {
-    setState(() {
-      _isAuthenticated = false;
-    });
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
-    _connectivitySubscription.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    widget.reporteSyncService.dispose();
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Reintentar sincronización cuando app regresa al foreground
+    if (state == AppLifecycleState.resumed) {
+      print('App reanudada - continuando sincronización de reportes...');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return _isAuthenticated
-        ? HomePage(onLogout: _handleLogout)
-        : LoginPage(onLoginSuccess: _handleLoginSuccess);
+    return MultiProvider(
+      providers: [
+        Provider<DatabaseService>.value(value: widget.dbService),
+        Provider<ApiService>.value(value: widget.apiService),
+        Provider<ReporteSyncService>.value(value: widget.reporteSyncService),
+      ],
+      child: MaterialApp(
+        title: 'Sistema de Reportes Rural',
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+          useMaterial3: false, // Mantener compatibilidad con tu diseño
+        ),
+        home: const LoginPage(),
+        routes: {
+          '/login': (context) => const LoginPage(),
+          '/home': (context) => HomePage(
+            onLogout: () {
+              Navigator.of(context).pushReplacementNamed('/login');
+            },
+          ),
+        },
+      ),
+    );
   }
 }

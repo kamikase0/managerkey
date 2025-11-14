@@ -1,3 +1,4 @@
+// lib/services/api_service.dart (ACTUALIZADO)
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/enviroment.dart';
@@ -5,13 +6,69 @@ import '../models/registro_despliegue_model.dart';
 
 class ApiService {
   static final String _baseUrl = Enviroment.apiUrl;
-  static final String _endpoint = 'registrosdespliegue/';
+  static final String _registrosEndpoint = 'registrosdespliegue/';
+  static final String _reportesEndpoint = 'reportesdiarios/';
 
-  /// URL completa del endpoint
-  String get registrosEndpoint => '$_baseUrl$_endpoint';
+  String get registrosEndpoint => '$_baseUrl$_registrosEndpoint';
+  String get reportesEndpoint => '$_baseUrl$_reportesEndpoint';
 
   /// =============================
-  /// 📤 Enviar un registro al servidor
+  /// 📊 Enviar Reporte Diario
+  /// =============================
+  Future<Map<String, dynamic>> enviarReporteDiario(
+      Map<String, dynamic> reporte, {
+        required String accessToken,
+      }) async {
+    final url = Uri.parse(reportesEndpoint);
+
+    try {
+      final body = jsonEncode(reporte);
+
+      print('🔔 Enviando POST → $url');
+      print('🧾 Body: $body');
+
+      final response = await http
+          .post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: body,
+      )
+          .timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => http.Response('Timeout', 408),
+      );
+
+      print('✅ Response status: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': 'Reporte enviado exitosamente',
+          'data': jsonDecode(response.body),
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Error al enviar reporte: ${response.statusCode}',
+          'error': response.body,
+        };
+      }
+    } catch (e) {
+      print('❌ Excepción al enviar reporte: $e');
+      return {
+        'success': false,
+        'message': 'Error de conexión: $e',
+      };
+    }
+  }
+
+  /// =============================
+  /// 📤 Enviar un registro al servidor (EXISTENTE)
   /// =============================
   Future<bool> enviarRegistroDespliegue(RegistroDespliegue registro) async {
     final url = Uri.parse(registrosEndpoint);
@@ -19,7 +76,7 @@ class ApiService {
     try {
       final body = jsonEncode(registro.toJson());
 
-      print('📡 Enviando POST → $url');
+      print('🔔 Enviando POST → $url');
       print('🧾 Body: $body');
 
       final response = await http
@@ -52,13 +109,13 @@ class ApiService {
   }
 
   /// =============================
-  /// 📥 Obtener todos los registros del servidor
+  /// 📥 Obtener todos los registros del servidor (EXISTENTE)
   /// =============================
   Future<List<RegistroDespliegue>> obtenerRegistros() async {
     final url = Uri.parse(registrosEndpoint);
 
     try {
-      print('📡 Solicitando registros desde: $url');
+      print('🔔 Solicitando registros desde: $url');
 
       final response = await http
           .get(
@@ -90,7 +147,7 @@ class ApiService {
   }
 
   /// =============================
-  /// ✏️ Actualizar un registro existente
+  /// ✏️ Actualizar un registro existente (EXISTENTE)
   /// =============================
   Future<bool> actualizarRegistroDespliegue(RegistroDespliegue registro) async {
     if (registro.id == null) {
@@ -103,7 +160,7 @@ class ApiService {
     try {
       final body = jsonEncode(registro.toJson());
 
-      print('📡 Enviando PUT → $url');
+      print('🔔 Enviando PUT → $url');
       print('🧾 Body: $body');
 
       final response = await http

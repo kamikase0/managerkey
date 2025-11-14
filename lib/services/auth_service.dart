@@ -90,8 +90,4 @@ final user = await getCurrentUser();
 return user?.isOperadorRural ?? false;
 }
 
-Future<bool> isOperadorUrbano() async {
-final user = await getCurrentUser();
-return user?.isOperadorUrbano ?? false;
-}
 }

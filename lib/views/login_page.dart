@@ -1,11 +1,13 @@
-// views/login_page.dart
+// views/login_page.dart (CORREGIDO)
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/reporte_sync_service.dart';
+import 'home_page.dart'; // O la página que uses después del login
 
 class LoginPage extends StatefulWidget {
-  final Function() onLoginSuccess;
-
-  const LoginPage({Key? key, required this.onLoginSuccess}) : super(key: key);
+  const LoginPage({Key? key}) : super(key: key);
 
   @override
   _LoginPageState createState() => _LoginPageState();
@@ -21,9 +23,9 @@ class _LoginPageState extends State<LoginPage> {
   void _quickLogin(String profile) {
     final userData = {
       'operador': {
-        'email': 'operador@test.com',
-        'username': 'jose_luis_subia',
-        'group': 'operador'
+        'email': 'j.quisbert.a',
+        'username': 'j.quisbert.a',
+        'group': 'Operador'
       },
       'soporte': {
         'email': 'soporte@test.com',
@@ -39,7 +41,7 @@ class _LoginPageState extends State<LoginPage> {
 
     final data = userData[profile]!;
     setState(() {
-      _emailController.text = data['email']!;
+      _emailController.text = data['username']!;
       _passwordController.text = 'password123';
     });
   }
@@ -52,17 +54,50 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      await AuthService().loginWithEmail(
+      // Realizar login
+      final authResponse = await AuthService().loginWithEmail(
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
-      widget.onLoginSuccess();
+
+      if (!mounted) return;
+
+      // Guardar token en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('access_token', authResponse.access);
+
+      // Inicializar ReporteSyncService con el token
+      // await widget.reporteSyncService.initialize(
+      //   accessToken: authResponse.access,
+      // );
+
+      await Provider.of<ReporteSyncService>(context, listen: false).initialize(
+        accessToken: authResponse.access,
+      );
+
+
+      // Navegar a la página de inicio
+      Navigator.of(context).pushReplacementNamed(
+        '/home', // O usa Navigator.of(context).pushReplacement si no usas rutas nombradas
+        arguments: authResponse.user,
+      );
+
+      // Alternativa sin rutas nombradas:
+      // Navigator.of(context).pushReplacement(
+      //   MaterialPageRoute(
+      //     builder: (context) => HomePage(user: authResponse.user),
+      //   ),
+      // );
+
     } catch (e) {
-      _showErrorDialog('Error en el login. Por favor intenta nuevamente.');
+      if (!mounted) return;
+      _showErrorDialog('Error en el login: ${e.toString()}');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -116,7 +151,7 @@ class _LoginPageState extends State<LoginPage> {
                       keyboardType: TextInputType.emailAddress,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Por favor ingresa tu email';
+                          return 'Por favor ingresa tu usuario';
                         }
                         return null;
                       },
@@ -155,7 +190,6 @@ class _LoginPageState extends State<LoginPage> {
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           backgroundColor: Colors.lightBlueAccent,
-
                         ),
                         child: _isLoading
                             ? const SizedBox(
@@ -163,55 +197,70 @@ class _LoginPageState extends State<LoginPage> {
                           width: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         )
                             : const Text('Iniciar Sesión'),
                       ),
                     ),
-                    // const SizedBox(height: 24),
-                    // const Divider(),
-                    // const Text(
-                    //   'Acceso rápido:',
-                    //   style: TextStyle(
-                    //     fontWeight: FontWeight.bold,
-                    //     color: Colors.grey,
-                    //   ),
-                    // ),
-                    // const SizedBox(height: 16),
-                    // Row(
-                    //   children: [
-                    //     Expanded(
-                    //       child: ElevatedButton(
-                    //         onPressed: () => _quickLogin('operador'),
-                    //         style: ElevatedButton.styleFrom(
-                    //           backgroundColor: Colors.lightBlueAccent,
-                    //         ),
-                    //         child: const Text('Ope'),
-                    //       ),
-                    //     ),
-                    //     const SizedBox(width: 8),
-                    //     Expanded(
-                    //       child: ElevatedButton(
-                    //         onPressed: () => _quickLogin('soporte'),
-                    //         style: ElevatedButton.styleFrom(
-                    //           backgroundColor: Colors.lightBlueAccent,
-                    //         ),
-                    //         child: const Text('Sop'),
-                    //       ),
-                    //     ),
-                    //     const SizedBox(width: 8),
-                    //     Expanded(
-                    //       child: ElevatedButton(
-                    //         onPressed: () => _quickLogin('coordinador'),
-                    //         style: ElevatedButton.styleFrom(
-                    //           backgroundColor: Colors.lightBlueAccent,
-                    //         ),
-                    //         child: const Text('Cord'),
-                    //       ),
-                    //     ),
-                    //   ],
-                    // ),
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const Text(
+                      'Acceso rápido (para testing):',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => _quickLogin('operador'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.lightBlueAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                            child: const Text(
+                              'Operador',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => _quickLogin('soporte'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.lightBlueAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                            child: const Text(
+                              'Soporte',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => _quickLogin('coordinador'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.lightBlueAccent,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                            child: const Text(
+                              'Coordinador',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),

@@ -8,6 +8,7 @@ class User {
   final Operador? operador;
   final Coordinador? coordinador;
 
+
   User({
     required this.id,
     required this.username,
