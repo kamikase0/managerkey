@@ -12,6 +12,46 @@ class ApiService {
   String get registrosEndpoint => '$_baseUrl$_registrosEndpoint';
   String get reportesEndpoint => '$_baseUrl$_reportesEndpoint';
 
+  //Obtener Reportes Diarios
+  Future<List<Map<String, dynamic>>> obtenerReportesDiarios({
+    required String accessToken,
+  }) async {
+    final url = Uri.parse(reportesEndpoint);
+
+    try{
+      print('🔔 Obteniendo reportes desde: $url');
+      final response = await http
+          .get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+      )
+      .timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => http.Response('Timeout',408),
+      );
+      print('✅ Response status: ${response.statusCode}');
+
+      if(response.statusCode == 200){
+        final List<dynamic> data = jsonDecode(response.body);
+        final reportes = data.map((json){
+          return Map<String, dynamic>.from(json as Map);
+        }).toList();
+
+        print(' Reportes obtenidos: ${reportes.length}');
+        return reportes;
+      }else{
+        print('⚠️ Error al obtener reportes: ${response.statusCode}');
+        return [];
+      }
+    }catch(e){
+      print('❌ Excepción al obtener reportes: $e');
+      return [];
+    }
+}
+
   /// =============================
   /// 📊 Enviar Reporte Diario
   /// =============================

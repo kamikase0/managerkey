@@ -1,4 +1,3 @@
-// views/home_page.dart (CORREGIDO)
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:manager_key/views/operador/reporte_diario_view.dart';
@@ -33,13 +32,16 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    // Usar context.read es seguro dentro de initState
     _syncService = context.read<ReporteSyncService>();
     _loadUserData();
   }
 
   Future<void> _loadUserData() async {
     try {
-      final user = await AuthService().getCurrentUser();
+      // Es mejor usar el provider si ya está disponible
+      final authService = context.read<AuthService>();
+      final user = await authService.getCurrentUser();
 
       if (user != null) {
         setState(() {
@@ -99,23 +101,62 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // =======================================================
+  // >> NUEVA FUNCIÓN: DIÁLOGO DE CONFIRMACIÓN <<
+  // =======================================================
+  Future<bool> _mostrarDialogoDeSalida() async {
+    final resultado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // El usuario debe presionar un botón
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Confirmar Salida'),
+          content: const Text('¿Estás seguro de que quieres cerrar la sesión?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('NO', style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('SÍ, SALIR', style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+    // Si el usuario cierra el diálogo de otra forma, asumimos 'false'
+    return resultado ?? false;
+  }
+  // =======================================================
+
   Future<void> _logout() async {
-    await AuthService().logout();
-    _syncService.dispose();
+    // Usamos el provider para una única fuente de verdad
+    final authService = context.read<AuthService>();
+    await authService.logout();
+    //_syncService.dispose();
     widget.onLogout();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Obtenemos una sola vez el provider de AuthService para evitar múltiples llamadas
+    final authService = context.read<AuthService>();
+
     return Scaffold(
       appBar: AppBar(
         title: FutureBuilder<String>(
-          future: AuthService().getWelcomeMessage(),
+          future: authService.getWelcomeMessage(),
           builder: (context, snapshot) {
             final welcomeMsg = snapshot.data ?? 'Sistema de Gestión';
             return Text(
-              welcomeMsg.length > 10
-                  ? '${welcomeMsg.substring(0, 10)}...'
+              welcomeMsg.length > 20
+                  ? '${welcomeMsg.substring(0, 20)}...'
                   : welcomeMsg,
             );
           },
@@ -156,7 +197,7 @@ class _HomePageState extends State<HomePage> {
 
           // Mostrar información del usuario en el AppBar
           FutureBuilder<User?>(
-            future: AuthService().getCurrentUser(),
+            future: authService.getCurrentUser(),
             builder: (context, snapshot) {
               final user = snapshot.data;
               if (user != null && user.groups.isNotEmpty) {
@@ -165,10 +206,11 @@ class _HomePageState extends State<HomePage> {
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
                           user.groups.join(', '),
-                          style: const TextStyle(fontSize: 11),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                         ),
                         if (user.tipoOperador != null)
                           Text(
@@ -185,7 +227,19 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: _logout,
+            // =======================================================
+            // >> CAMBIO PRINCIPAL: LÓGICA DE onP ressed <<
+            // =======================================================
+            onPressed: () async {
+              // 1. Mostrar el diálogo y esperar la respuesta
+              final bool confirmarSalida = await _mostrarDialogoDeSalida();
+
+              // 2. Si el usuario confirma, entonces ejecutar el logout
+              if (confirmarSalida) {
+                await _logout();
+              }
+              // Si no, no hacer nada.
+            },
             tooltip: 'Cerrar Sesión',
           ),
         ],
@@ -216,7 +270,6 @@ class _HomePageState extends State<HomePage> {
                   return const SizedBox.shrink();
                 }
 
-                final status = snapshot.data!;
                 return Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(

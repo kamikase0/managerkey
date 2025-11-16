@@ -1,4 +1,6 @@
+// lib/widgets/sidebar.dart (ACTUALIZADO)
 import 'package:flutter/material.dart';
+import '../views/operador/reporte_historial_view.dart';
 
 class Sidebar extends StatelessWidget {
   final String activeView;
@@ -86,12 +88,11 @@ class Sidebar extends StatelessWidget {
               isActive: activeView == 'reporte_diario',
               onTap: onViewChanged,
             ),
-            _buildMenuItem(
+            _buildMenuItemWithNavigation(
+              context: context,
               icon: Icons.history,
-              label: 'Histórico de Reportes',
-              value: 'historial_reportes',
-              isActive: activeView == 'historial_reportes',
-              onTap: onViewChanged,
+              label: 'Historial de Reportes',
+              destination: const ReporteHistorialView(),
             ),
           ]
           // Menú para Operador Urbano
@@ -103,12 +104,11 @@ class Sidebar extends StatelessWidget {
               isActive: activeView == 'reporte_diario',
               onTap: onViewChanged,
             ),
-            _buildMenuItem(
+            _buildMenuItemWithNavigation(
+              context: context,
               icon: Icons.history,
-              label: 'Histórico de Reportes',
-              value: 'historial_reportes',
-              isActive: activeView == 'historial_reportes',
-              onTap: onViewChanged,
+              label: 'Historial de Reportes',
+              destination: const ReporteHistorialView(),
             ),
           ]
           // Menú para Soporte
@@ -179,6 +179,36 @@ class Sidebar extends StatelessWidget {
       selected: isActive,
       selectedTileColor: Colors.blue.shade50,
       onTap: () => onTap(value),
+    );
+  }
+
+  Widget _buildMenuItemWithNavigation({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required Widget destination,
+  }) {
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: Colors.grey,
+      ),
+      title: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.black87,
+          fontWeight: FontWeight.normal,
+        ),
+      ),
+      onTap: () {
+        Navigator.pop(context); // Cerrar drawer
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => destination,
+          ),
+        );
+      },
     );
   }
 }

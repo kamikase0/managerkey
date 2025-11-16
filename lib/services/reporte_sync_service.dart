@@ -180,7 +180,7 @@ class ReporteSyncService {
 
       final message = failedCount > 0
           ? 'Se sincronizaron $syncedCount reportes. $failedCount fallaron.'
-          : 'Se sincronizaron $syncedCount reportes exitosamente.';
+          : 'Se sincronizaron $syncedCount reportes exitosamente y se eliminaron localmente.';
 
       _syncStatusController.add(SyncStatus(
         isSyncing: false,
@@ -206,6 +206,14 @@ class ReporteSyncService {
       ..removeWhere((key, value) =>
           ['id', 'synced', 'updated_at'].contains(key));
 
+    // Mapear nombres de columnas si es necesario
+    if (dataToSend.containsKey('contador_c')) {
+      dataToSend['registro_c'] = dataToSend['contador_c'];
+    }
+    if (dataToSend.containsKey('contador_r')) {
+      dataToSend['registro_r'] = dataToSend['contador_r'];
+    }
+
     final response = await _apiService.enviarReporteDiario(
       dataToSend,
       accessToken: _accessToken ?? '',
@@ -215,8 +223,8 @@ class ReporteSyncService {
       throw Exception('Error al sincronizar reporte: ${response['message']}');
     }
 
-    // Marcar como sincronizado
-    await _databaseService.markReporteAsSynced(reporte['id']);
+    // ✅ ELIMINAR el registro local en lugar de solo marcarlo como sincronizado
+    await _databaseService.deleteReporte(reporte['id']);
   }
 
   /// Obtener lista de reportes
@@ -239,6 +247,34 @@ class ReporteSyncService {
     _syncTimer?.cancel();
     _syncStatusController.close();
   }
+
+  /// Eliminar reporte local por ID
+  Future<void> deleteLocalReporte(int id) async {
+    try {
+      await _databaseService.deleteReporte(id);
+      print('✅ Reporte local $id eliminado');
+    } catch (e) {
+      print('❌ Error eliminando reporte local $id: $e');
+      rethrow;
+    }
+  }
+
+  /// Elimina de la base de datos local todos los reportes de un operador específico
+  Future<void> clearSyncedLocalReportes(int operadorId) async {
+    try {
+      // Delegamos la operación de borrado directamente al servicio de base de datos.
+      final count = await _databaseService.deleteSyncedReportesByOperador(operadorId);
+      if (count > 0) {
+        print('🧹 Limpieza completada: Se eliminaron $count reportes locales ya sincronizados para el operador $operadorId.');
+      }
+    } catch (e) {
+      print('❌ Error durante la limpieza de reportes locales sincronizados: $e');
+      // No relanzamos el error para no interrumpir la experiencia del usuario,
+      // ya que esta es una tarea de mantenimiento en segundo plano.
+    }
+  }
+
+
 }
 
 class SyncStatus {

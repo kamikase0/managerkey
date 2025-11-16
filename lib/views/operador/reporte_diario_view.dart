@@ -1,5 +1,6 @@
 // lib/views/operador/reporte_diario_view.dart (ACTUALIZADO)
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../services/reporte_sync_service.dart';
 import '../../services/auth_service.dart';
@@ -19,8 +20,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   final TextEditingController _transmitidoController = TextEditingController();
   final TextEditingController _rInicialiController = TextEditingController();
   final TextEditingController _rFinalController = TextEditingController();
+  final TextEditingController _rTotalController = TextEditingController();
   final TextEditingController _cInicialiController = TextEditingController();
   final TextEditingController _cFinalController = TextEditingController();
+  final TextEditingController _cTotalController = TextEditingController();
   final TextEditingController _observacionesController = TextEditingController();
   final TextEditingController _incidenciasController = TextEditingController();
   final TextEditingController _rTotal = TextEditingController();
@@ -31,8 +34,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   late User? _userData;
   late String _accessToken;
 
-  double diferenciaR = 0;
-  double diferenciaC = 0;
+  int diferenciaR = 0;
+  int diferenciaC = 0;
   bool _isSubmitting = false;
 
   @override
@@ -86,8 +89,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         'fecha_reporte': _fechaController.text,
         'contador_inicial_c': _cInicialiController.text,
         'contador_final_c': _cFinalController.text,
+        'registro_c': diferenciaC,
         'contador_inicial_r': _rInicialiController.text,
         'contador_final_r': _rFinalController.text,
+        'registro_r': diferenciaR,
         'incidencias': _incidenciasController.text,
         'observaciones': _observacionesController.text,
         'operador': _userData!.operador!.idOperador,
@@ -346,6 +351,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               value?.isEmpty ?? true ? 'Requerido' : null,
                               onChanged: (_) => _calcularDiferencia(),
                               keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(4),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -365,6 +374,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               value?.isEmpty ?? true ? 'Requerido' : null,
                               onChanged: (_) => _calcularDiferencia(),
                               keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(4)
+                              ],
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -411,6 +424,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               value?.isEmpty ?? true ? 'Requerido' : null,
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _calcularDiferencia(),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(4)
+                              ],
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -430,6 +447,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               value?.isEmpty ?? true ? 'Requerido' : null,
                               keyboardType: TextInputType.number,
                               onChanged: (_) => _calcularDiferencia(),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(4)
+                              ],
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -452,20 +473,20 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Incidencias
-                      TextFormField(
-                        controller: _incidenciasController,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          labelText: 'Incidencias',
-                          hintText: 'Ingrese incidencias si las hay...',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: const EdgeInsets.all(12),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                      // // Incidencias
+                      // TextFormField(
+                      //   controller: _incidenciasController,
+                      //   maxLines: 3,
+                      //   decoration: InputDecoration(
+                      //     labelText: 'Incidencias',
+                      //     hintText: 'Ingrese incidencias si las hay...',
+                      //     border: OutlineInputBorder(
+                      //       borderRadius: BorderRadius.circular(8),
+                      //     ),
+                      //     contentPadding: const EdgeInsets.all(12),
+                      //   ),
+                      // ),
+                      // const SizedBox(height: 16),
 
                       // Observaciones
                       TextFormField(

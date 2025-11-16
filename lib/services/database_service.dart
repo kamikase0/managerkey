@@ -57,8 +57,10 @@ class DatabaseService {
         fecha_reporte TEXT NOT NULL,
         contador_inicial_c TEXT NOT NULL,
         contador_final_c TEXT NOT NULL,
+        contador_c TEXT NOT NULL,
         contador_inicial_r TEXT NOT NULL,
         contador_final_r TEXT NOT NULL,
+        contador_r TEXT NOT NULL,
         incidencias TEXT,
         observaciones TEXT,
         operador INTEGER NOT NULL,
@@ -80,8 +82,10 @@ class DatabaseService {
           fecha_reporte TEXT NOT NULL,
           contador_inicial_c TEXT NOT NULL,
           contador_final_c TEXT NOT NULL,
+          contador_c TEXT NOT NULL,
           contador_inicial_r TEXT NOT NULL,
           contador_final_r TEXT NOT NULL,
+          contador_r TEXT NOT NULL,
           incidencias TEXT,
           observaciones TEXT,
           operador INTEGER NOT NULL,
@@ -236,10 +240,21 @@ class DatabaseService {
   Future<int> insertReporte(Map<String, dynamic> data) async {
     try {
       final db = await database;
+
+      final mappedData = Map<String, dynamic>.from (data);
+      if (mappedData.containsKey('registro_c')) {
+        mappedData['contador_c'] = mappedData['registro_c'];
+        mappedData.remove('registro_c');
+      }
+      if (mappedData.containsKey('registro_r')) {
+        mappedData['contador_r'] = mappedData['registro_r'];
+        mappedData.remove('registro_r');
+      }
+
       final result = await db.insert(
         'reportes_diarios',
         {
-          ...data,
+          ...mappedData,
           'updated_at': DateTime.now().toIso8601String(),
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -337,6 +352,24 @@ class DatabaseService {
     } catch (e) {
       print('❌ Error al eliminar reporte: $e');
       rethrow;
+    }
+  }
+
+  /// Elimina de la tabla 'reportes_diarios' las filas que pertenecen a un
+  /// operador específico y que ya están marcadas como sincronizadas
+  Future<int> deleteSyncedReportesByOperador(int operadorId) async {
+    try {
+      final db = await database;
+      final count = await db.delete(
+        'reportes_diarios',
+        // La condición es que el 'operador' coincida Y 'synced' sea 1 (verdadero).
+        where: 'operador = ? AND synced = ?',
+        whereArgs: [operadorId, 1],
+      );
+      return count; // Devuelve el número de filas eliminadas.
+    } catch (e) {
+      print('❌ Error al eliminar reportes sincronizados por operador: $e');
+      rethrow; // Relanzamos para que ReporteSyncService pueda manejarlo.
     }
   }
 

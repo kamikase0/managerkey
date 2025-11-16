@@ -65,6 +65,26 @@ return User.fromJson(userMap);
 return null;
 }
 
+// =======================================================
+// MÉTODO NUEVO: Añade esta función a tu servicio
+// =======================================================
+Future<String?> getAccessToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  final authJson = prefs.getString(_authKey); // _authKey es 'auth_tokens'
+
+  if (authJson != null) {
+    try {
+      final tokenMap = json.decode(authJson) as Map<String, dynamic>;
+      // La API devuelve 'access', el modelo usa 'accessToken'. Cubrimos ambos casos.
+      return tokenMap['access'] ?? tokenMap['accessToken'];
+    } catch (e) {
+      print('Error al decodificar el token de acceso: $e');
+      return null;
+    }
+  }
+  return null; // Retorna null si no se encuentra el token
+}
+
 Future<String?> getUserGroup() async {
 final user = await getCurrentUser();
 return user?.primaryGroup;
