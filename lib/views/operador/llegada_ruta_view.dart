@@ -109,15 +109,12 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
       // Obtener ubicación actual
       final location = await LocationService().getCurrentLocation();
       if (location == null) {
-        _mostrarSnack(
-            'No se pudo obtener la ubicación actual',
-            error: true);
+        _mostrarSnack('No se pudo obtener la ubicación actual', error: true);
         return;
       }
 
       setState(() {
-        _coordenadas =
-        'Lat: ${location.latitude.toStringAsFixed(6)}\nLong: ${location.longitude.toStringAsFixed(6)}';
+        _coordenadas = 'Lat: ${location.latitude.toStringAsFixed(6)}\nLong: ${location.longitude.toStringAsFixed(6)}';
       });
 
       final ahora = DateTime.now();
@@ -135,7 +132,7 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
             : _observacionesController.text,
         incidencias: _registroActivo!.incidencias,
         fechaHora: ahora.toIso8601String(),
-        operadorId: widget.idOperador, // 🎯 Usar idOperador
+        operadorId: widget.idOperador,
         sincronizado: false,
       );
 
@@ -150,23 +147,24 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
         final tieneInternet = await SyncService().verificarConexion();
 
         if (tieneInternet) {
-          final apiService = ApiService();
-          final enviado =
-          await apiService.enviarRegistroDespliegue(nuevoRegistroLlegada);
+          // ✅ CORREGIDO: Obtener token y crear ApiService
+          final accessToken = await _obtenerAccessToken();
+          final apiService = ApiService(accessToken: accessToken);
+
+          // ✅ CORREGIDO: Usar toApiMap() en lugar del objeto directamente
+          final registroMap = nuevoRegistroLlegada.toApiMap();
+
+          // ✅ CORREGIDO: enviarRegistroDespliegue ahora retorna bool
+          final enviado = await apiService.enviarRegistroDespliegue(registroMap);
 
           if (enviado) {
             await db.marcarComoSincronizado(nuevoId);
-            _mostrarSnack(
-                '✅ Llegada registrada y sincronizada correctamente.');
+            _mostrarSnack('✅ Llegada registrada y sincronizada correctamente.');
           } else {
-            _mostrarSnack(
-                '⚠️ Error al enviar. Guardado para sincronizar después.',
-                error: true);
+            _mostrarSnack('⚠️ Error al enviar. Guardado para sincronizar después.', error: true);
           }
         } else {
-          _mostrarSnack(
-              '📡 Sin conexión. Se sincronizará cuando haya internet.',
-              error: true);
+          _mostrarSnack('📡 Sin conexión. Se sincronizará cuando haya internet.', error: true);
         }
       } else {
         _mostrarSnack('✅ Llegada registrada localmente.');
@@ -185,6 +183,20 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
       _mostrarSnack('Error al registrar llegada: $e', error: true);
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// ✅ NUEVO MÉTODO: Obtener access token
+  Future<String> _obtenerAccessToken() async {
+    try {
+      // Implementa según cómo manejes los tokens en tu app
+      // Por ejemplo, desde SharedPreferences o AuthService
+      final authService = AuthService();
+      final token = await authService.getAccessToken();
+      return token ?? '';
+    } catch (e) {
+      print('❌ Error obteniendo access token: $e');
+      return '';
     }
   }
 

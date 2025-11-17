@@ -14,8 +14,33 @@ class DatabaseService {
   DatabaseService._internal();
 
   Future<Database> get database async {
-    _database ??= await _initializeDatabase();
+    if(_database != null) return _database!;
+    // _database ??= await _initializeDatabase();
+    _database = await _initializeDatabase();
     return _database!;
+  }
+
+  Future<List<RegistroDespliegue>> obtenerRegistrosDespliegueNoSincronizados() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'registros_despliegue',
+      where: 'sincronizado = ?',
+      whereArgs: [0], // Asumiendo que 0 significa no sincronizado
+    );
+    return List.generate(maps.length, (i) {
+      return RegistroDespliegue.fromMap(maps[i]);
+    });
+  }
+
+  // AGREGA ESTE MÉTODO
+  Future<void> eliminarRegistroDespliegue(int id) async {
+    final db = await database;
+    await db.delete(
+      'registros_despliegue',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    print('✅ Registro de despliegue local $id eliminado.');
   }
 
   Future<Database> _initializeDatabase() async {
@@ -107,6 +132,7 @@ class DatabaseService {
       final result = await db.insert(
         'registros_despliegue',
         registro.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
       print('Registro insertado con ID: $result');
       return result;
@@ -388,4 +414,38 @@ class DatabaseService {
       return 0;
     }
   }
+
+  // Agrega este método a tu DatabaseService
+  Future<int> insertRegistroDespliegueFromMap(Map<String, dynamic> data) async {
+    try {
+      final db = await database;
+
+      // Mapear los datos al formato de la tabla registros_despliegue
+      final mappedData = {
+        'destino': data['destino'] ?? 'REPORTE DIARIO',
+        'latitud': data['latitud_despliegue'] ?? '',
+        'longitud': data['longitud_despliegue'] ?? '',
+        'descripcion_reporte': data['observaciones'] ?? '',
+        'estado': data['estado'] ?? 'REPORTE ENVIADO',
+        'sincronizar': data['sincronizar'] ?? true ? 1 : 0,
+        'observaciones': data['observaciones'] ?? '',
+        'incidencias': data['incidencias'] ?? '',
+        'fecha_hora': data['fecha_hora_salida'] ?? DateTime.now().toIso8601String(),
+        'operador_id': data['operador'] ?? 0,
+        'sincronizado': 0,
+      };
+
+      final result = await db.insert(
+        'registros_despliegue',
+        mappedData,
+      );
+      print('📍 Registro de despliegue insertado con ID: $result');
+      return result;
+    } catch (e) {
+      print('❌ Error al insertar registro de despliegue: $e');
+      rethrow;
+    }
+  }
+
+
 }

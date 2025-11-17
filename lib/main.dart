@@ -12,29 +12,32 @@ void main() async {
 
   // Inicializa servicios globales
   final dbService = DatabaseService();
-  final apiService = ApiService();
   final authService = AuthService();
 
   // Inicializa la base de datos
   await dbService.database;
 
+  // Obtener token para inicializar ApiServer
+  final accessToken = await authService.getAccessToken() ?? '';
+
+
   runApp(MyApp(
     dbService: dbService,
-    apiService: apiService,
     authService: authService,
+    accessToken: accessToken,
   ));
 }
 
 class MyApp extends StatelessWidget {
   final DatabaseService dbService;
-  final ApiService apiService;
   final AuthService authService;
+  final String accessToken;
 
   const MyApp({
     super.key,
     required this.dbService,
-    required this.apiService,
     required this.authService,
+    required this.accessToken,
   });
 
   @override
@@ -43,13 +46,11 @@ class MyApp extends StatelessWidget {
       providers: [
         Provider<AuthService>.value(value: authService),
         Provider<DatabaseService>.value(value: dbService),
-        Provider<ApiService>.value(value: apiService),
-        // ✅ Agregar Provider para ReporteSyncService (sin inicializar aún)
+        Provider<ApiService>(
+          create: (_) => ApiService(accessToken: accessToken),
+        ),
         Provider<ReporteSyncService>(
-          create: (_) => ReporteSyncService(
-            databaseService: dbService,
-            apiService: apiService,
-          ),
+          create: (_) => ReporteSyncService(databaseService: dbService),
           dispose: (_, service) => service.dispose(),
         ),
       ],

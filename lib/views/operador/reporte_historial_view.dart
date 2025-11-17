@@ -22,13 +22,14 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
   late AuthService _authService;
   late ApiService _apiService;
   late ReporteSyncService _syncService;
+  //ApiService? _apiService;
 
   @override
   void initState() {
     super.initState();
     // Es mejor inicializar los servicios aquí para acceder al context de forma segura
     _authService = Provider.of<AuthService>(context, listen: false);
-    _apiService = ApiService(); // Asumiendo que no necesita Provider
+    _apiService = Provider.of<ApiService>(context, listen: false);
     _syncService = Provider.of<ReporteSyncService>(context, listen: false);
     _loadData();
   }
@@ -58,6 +59,8 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         _showError("Sesión expirada. Por favor, inicie sesión de nuevo.");
         return;
       }
+
+      _apiService = ApiService(accessToken: accessToken);
 
       // ============================================
       // 2. OBTENER REPORTES (EN PARALELO PARA MÁS VELOCIDAD)
@@ -134,15 +137,20 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
   // MÉTODOS AUXILIARES PARA OBTENER DATOS
   Future<List<Map<String, dynamic>>> _fetchRemoteReportes(String accessToken, int operadorId) async {
     try {
-      final remotos = await _apiService.obtenerReportesDiarios(accessToken: accessToken);
+      // ✅ CORREGIDO: Usar _apiService ya inicializado
+      // if (_apiService == null) {
+      //   throw Exception("ApiService no inicializado");
+      // }
+
+      final remotos = await _apiService.obtenerReportesDiarios();
+
       // Filtrar y preparar los datos
       return remotos
           .where((r) => r["operador"] == operadorId)
-          .map((r) => {...r, "synced": true}) // Marcar como sincronizados
+          .map((r) => {...r, "synced": true})
           .toList();
     } catch (e) {
       print("No se pudieron obtener reportes remotos: $e");
-      // Devolver lista vacía en caso de error de red, no detener todo el proceso.
       return [];
     }
   }

@@ -64,6 +64,25 @@ class RegistroDespliegue {
     };
   }
 
+  /// ✅  Convierte al formato del endpoint de despliegue
+  Map<String, dynamic> toApiMap() {
+    return {
+      "destino": destino,
+      "latitud_despliegue": latitud, // El endpoint espera "latitud_despliegue"
+      "longitud_despliegue": longitud, // El endpoint espera "longitud_despliegue"
+      "estado": estado,
+      "sincronizar": sincronizar,
+      "observaciones": observaciones,
+      "fue_desplegado": true, // Para reportes diarios siempre es true
+      "fecha_hora_salida": fechaHora, // El endpoint espera "fecha_hora_salida"
+      "llego_destino": false, // Para reportes diarios siempre es false
+      "operador": operadorId,
+      // Campos que no están en tu modelo pero el endpoint podría esperar:
+      "incidencias": incidencias,
+      "descripcion_reporte": descripcionReporte,
+    };
+  }
+
   /// Crear desde Map de SQLite
   factory RegistroDespliegue.fromMap(Map<String, dynamic> map) {
     return RegistroDespliegue(

@@ -1,10 +1,11 @@
-// lib/services/api_service.dart (ACTUALIZADO)
+// lib/services/api_service.dart (CORREGIDO)
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/enviroment.dart';
 import '../models/registro_despliegue_model.dart';
 
 class ApiService {
+  final String accessToken;
   static final String _baseUrl = Enviroment.apiUrl;
   static final String _registrosEndpoint = 'registrosdespliegue/';
   static final String _reportesEndpoint = 'reportesdiarios/';
@@ -12,10 +13,11 @@ class ApiService {
   String get registrosEndpoint => '$_baseUrl$_registrosEndpoint';
   String get reportesEndpoint => '$_baseUrl$_reportesEndpoint';
 
+  ApiService({required this.accessToken});
+
   //Obtener Reportes Diarios
-  Future<List<Map<String, dynamic>>> obtenerReportesDiarios({
-    required String accessToken,
-  }) async {
+  //Obtener Reportes Diarios
+  Future<List<Map<String, dynamic>>> obtenerReportesDiarios() async {
     final url = Uri.parse(reportesEndpoint);
 
     try{
@@ -28,7 +30,7 @@ class ApiService {
           'Authorization': 'Bearer $accessToken',
         },
       )
-      .timeout(
+          .timeout(
         const Duration(seconds: 20),
         onTimeout: () => http.Response('Timeout',408),
       );
@@ -50,15 +52,11 @@ class ApiService {
       print('❌ Excepción al obtener reportes: $e');
       return [];
     }
-}
-
+  }
   /// =============================
   /// 📊 Enviar Reporte Diario
   /// =============================
-  Future<Map<String, dynamic>> enviarReporteDiario(
-      Map<String, dynamic> reporte, {
-        required String accessToken,
-      }) async {
+  Future<Map<String, dynamic>> enviarReporteDiario(Map<String, dynamic> reporte) async {
     final url = Uri.parse(reportesEndpoint);
 
     try {
@@ -107,49 +105,75 @@ class ApiService {
     }
   }
 
-  /// =============================
-  /// 📤 Enviar un registro al servidor (EXISTENTE)
-  /// =============================
-  Future<bool> enviarRegistroDespliegue(RegistroDespliegue registro) async {
-    final url = Uri.parse(registrosEndpoint);
 
+  /// =============================
+  /// 📤 Enviar un registro al servidor (CORREGIDO)
+  /// =============================
+  // Future<Map<String, dynamic>> enviarRegistroDespliegue(Map<String, dynamic> data) async {
+  //   try {
+  //     final url = Uri.parse(registrosEndpoint);
+  //
+  //     print('🔔 Enviando registro de despliegue a: $url');
+  //
+  //     final response = await http.post(
+  //       url,
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Authorization': 'Bearer $accessToken',
+  //       },
+  //       body: jsonEncode(data),
+  //     );
+  //
+  //     print('✅ Response status: ${response.statusCode}');
+  //     print('📥 Response body: ${response.body}');
+  //
+  //     if (response.statusCode == 200 || response.statusCode == 201) {
+  //       return {
+  //         'success': true,
+  //         'message': 'Registro de despliegue enviado exitosamente',
+  //         'data': jsonDecode(response.body),
+  //       };
+  //     } else {
+  //       return {
+  //         'success': false,
+  //         'message': 'Error ${response.statusCode}: ${response.body}',
+  //       };
+  //     }
+  //   } catch (e) {
+  //     return {
+  //       'success': false,
+  //       'message': 'Error de conexión: $e',
+  //     };
+  //   }
+  // }
+
+  Future<bool> enviarRegistroDespliegue(Map<String, dynamic> data) async {
     try {
-      final body = jsonEncode(registro.toJson());
+      final url = Uri.parse(registrosEndpoint);
 
-      print('🔔 Enviando POST → $url');
-      print('🧾 Body: $body');
+      print('🔔 Enviando registro de despliegue a: $url');
 
-      final response = await http
-          .post(
+      final response = await http.post(
         url,
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
         },
-        body: body,
-      )
-          .timeout(
-        const Duration(seconds: 20),
-        onTimeout: () => http.Response('Timeout', 408),
+        body: jsonEncode(data),
       );
 
       print('✅ Response status: ${response.statusCode}');
       print('📥 Response body: ${response.body}');
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return true;
-      } else {
-        print('⚠️ Error al enviar (${response.statusCode}): ${response.body}');
-        return false;
-      }
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      print('❌ Excepción al enviar registro: $e');
+      print('❌ Error de conexión al enviar registro: $e');
       return false;
     }
   }
 
   /// =============================
-  /// 📥 Obtener todos los registros del servidor (EXISTENTE)
+  /// 📥 Obtener todos los registros del servidor (CORREGIDO)
   /// =============================
   Future<List<RegistroDespliegue>> obtenerRegistros() async {
     final url = Uri.parse(registrosEndpoint);
@@ -162,6 +186,7 @@ class ApiService {
         url,
         headers: {
           'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken', // Añadido Authorization
         },
       )
           .timeout(
@@ -187,7 +212,7 @@ class ApiService {
   }
 
   /// =============================
-  /// ✏️ Actualizar un registro existente (EXISTENTE)
+  /// ✏️ Actualizar un registro existente (CORREGIDO)
   /// =============================
   Future<bool> actualizarRegistroDespliegue(RegistroDespliegue registro) async {
     if (registro.id == null) {
@@ -209,6 +234,7 @@ class ApiService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken', // Añadido Authorization
         },
         body: body,
       )

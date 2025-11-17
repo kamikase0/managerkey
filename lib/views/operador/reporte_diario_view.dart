@@ -1,9 +1,11 @@
-// lib/views/operador/reporte_diario_view.dart (ACTUALIZADO)
+// lib/views/operador/reporte_diario_view.dart (VERSIÓN COMPLETA MEJORADA)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../services/reporte_sync_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/location_service.dart';
 import '../../models/user_model.dart';
 
 class ReporteDiarioView extends StatefulWidget {
@@ -32,11 +34,18 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
   late ReporteSyncService _syncService;
   late User? _userData;
-  late String _accessToken;
 
   int diferenciaR = 0;
   int diferenciaC = 0;
   bool _isSubmitting = false;
+
+  // Variables para geolocalización
+  String? _latitud;
+  String? _longitud;
+  bool _locationCaptured = false;
+  String _coordenadas = 'No capturadas';
+  bool _gpsActivado = false;
+  bool _ubicacionRequerida = true;
 
   @override
   void initState() {
@@ -44,6 +53,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     _loadUserData();
     _syncService = context.read<ReporteSyncService>();
     _fechaController.text = DateTime.now().toString().split('.')[0];
+    _verificarEstadoGPS();
+    _iniciarMonitorGPS(); // ✅ Iniciar monitoreo inmediatamente
   }
 
   Future<void> _loadUserData() async {
@@ -51,32 +62,75 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
     if (_userData != null && _userData!.operador != null) {
       setState(() {
-        // Usar los nombres correctos del modelo
         final operador = _userData!.operador!;
-        _transmitidoController.text = operador.idOperador.toString() ?? '';
+        _transmitidoController.text = operador.idOperador.toString();
         _codigoEstacionController.text = 'Estación: ${operador.nroEstacion ?? 'N/A'}';
       });
     }
   }
 
-  @override
-  void dispose() {
-    _codigoEstacionController.dispose();
-    _transmitidoController.dispose();
-    _rInicialiController.dispose();
-    _rFinalController.dispose();
-    _cInicialiController.dispose();
-    _cFinalController.dispose();
-    _observacionesController.dispose();
-    _incidenciasController.dispose();
-    _rTotal.dispose();
-    _cTotal.dispose();
-    _fechaController.dispose();
-    super.dispose();
+  // ✅ VERIFICAR SI EL GPS ESTÁ ACTIVADO
+  Future<void> _verificarEstadoGPS() async {
+    try {
+      final servicioHabilitado = await Geolocator.isLocationServiceEnabled();
+      setState(() {
+        _gpsActivado = servicioHabilitado;
+      });
+      print('📍 Estado GPS: ${servicioHabilitado ? "ACTIVADO" : "DESACTIVADO"}');
+    } catch (e) {
+      print('❌ Error verificando estado GPS: $e');
+      setState(() {
+        _gpsActivado = false;
+      });
+    }
+  }
+
+  // ✅ CAPTURA SILENCIOSA - Solo cuando se presiona el botón
+  Future<bool> _capturarGeolocalizacionAlEnviar() async {
+    try {
+      // ✅ VERIFICAR GPS ANTES DE CAPTURAR
+      if (!_gpsActivado) {
+        print('⚠️ GPS no activado, no se puede capturar ubicación');
+        return false;
+      }
+
+      print('📍 Iniciando captura de geolocalización...');
+      final position = await LocationService().getCurrentLocation();
+      if (position != null) {
+        setState(() {
+          _latitud = position.latitude.toStringAsFixed(6);
+          _longitud = position.longitude.toStringAsFixed(6);
+          _coordenadas = 'Lat: ${_latitud}\nLong: ${_longitud}';
+          _locationCaptured = true;
+        });
+        print('📍 Geolocalización capturada exactamente: $_coordenadas');
+        return true;
+      } else {
+        setState(() {
+          _locationCaptured = false;
+          _coordenadas = 'Error al capturar ubicación';
+        });
+        print('⚠️ No se pudo capturar la ubicación');
+        return false;
+      }
+    } catch (e) {
+      setState(() {
+        _locationCaptured = false;
+        _coordenadas = 'Error: $e';
+      });
+      print('❌ Error capturando ubicación: $e');
+      return false;
+    }
   }
 
   void _enviarReporte() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // ✅ VALIDACIÓN OBLIGATORIA DE GPS
+    if (!_gpsActivado && _ubicacionRequerida) {
+      _mostrarDialogoActivacionGPS();
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
@@ -84,6 +138,16 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       if (_userData?.operador == null) {
         throw Exception('Datos de operador no disponibles');
       }
+
+      // ✅ CAPTURAR GEOLOCALIZACIÓN SOLO SI EL GPS ESTÁ ACTIVADO
+      bool ubicacionCapturada = false;
+      if (_gpsActivado && _ubicacionRequerida) {
+        ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
+      }
+
+      // Obtener fecha y hora actual en formato ISO
+      final ahora = DateTime.now();
+      final fechaHora = ahora.toIso8601String();
 
       final reporteData = {
         'fecha_reporte': _fechaController.text,
@@ -97,24 +161,72 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         'observaciones': _observacionesController.text,
         'operador': _userData!.operador!.idOperador,
         'estacion': _userData!.operador!.idEstacion,
-        'estado': 'TRANSMITIDO',
+        'estado': 'ENVIO REPORTE',
         'sincronizar': true,
       };
 
-      final result = await _syncService.saveReporte(reporteData);
+      // ✅ PREPARAR DATOS DE DESPLIEGUE (SE GUARDAN LOCALMENTE SI NO HAY INTERNET)
+      final despliegueData = {
+        'destino': 'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
+        'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
+        'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
+        'descripcion_reporte': null,
+        'estado': 'REPORTE ENVIADO',
+        'sincronizar': true,
+        'observaciones': 'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
+        'incidencias': _ubicacionRequerida
+            ? (ubicacionCapturada ? 'Ubicación capturada correctamente' : 'No se pudo capturar ubicación')
+            : 'Ubicación no requerida para este reporte',
+        'fecha_hora': fechaHora,
+        'operador': _userData!.operador!.idOperador,
+        'sincronizado': false,
+      };
+
+      print('📤 Enviando reporte con datos:');
+      print('📍 GPS Activado: $_gpsActivado');
+      print('📍 Ubicación Requerida: $_ubicacionRequerida');
+      print('📍 Coordenadas: $_coordenadas');
+      print('🕐 Fecha/Hora: $fechaHora');
+
+      // ✅ ENVÍO COMBINADO: Reporte diario + Geolocalización (SE GUARDA LOCAL SI NO HAY INTERNET)
+      final result = await _syncService.saveReporteGeolocalizacion(
+        reporteData: reporteData,
+        despliegueData: despliegueData,
+      );
 
       if (!mounted) return;
 
+      // Mostrar mensaje apropiado
+      final mensaje = result['success']
+          ? (result['saved_locally'] == true
+          ? '📱 Reporte guardado localmente. Se sincronizará cuando haya internet.'
+          : (_ubicacionRequerida
+          ? (ubicacionCapturada
+          ? '✅ Reporte enviado con geolocalización'
+          : '⚠️ Reporte enviado sin geolocalización')
+          : '✅ Reporte enviado sin ubicación'))
+          : result['message'];
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['message']),
-          backgroundColor: result['success'] ? Colors.green : Colors.red,
-          duration: Duration(seconds: 3),
+          content: Text(mensaje),
+          backgroundColor: result['success']
+              ? (result['saved_locally'] == true ? Colors.orange : Colors.green)
+              : Colors.red,
+          duration: Duration(seconds: 4),
         ),
       );
 
       if (result['success']) {
         _cleanFormulario();
+        // Limpiar ubicación para el próximo reporte
+        setState(() {
+          _latitud = null;
+          _longitud = null;
+          _coordenadas = 'No capturadas';
+          _locationCaptured = false;
+          _ubicacionRequerida = true; // ✅ Resetear a requerido para próximo reporte
+        });
       }
     } catch (e) {
       if (!mounted) return;
@@ -129,6 +241,83 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         setState(() => _isSubmitting = false);
       }
     }
+  }
+
+  // ✅ DIALOGO PARA ACTIVAR GPS
+  void _mostrarDialogoActivacionGPS() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('GPS Requerido', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.location_off, size: 48, color: Colors.orange),
+              SizedBox(height: 16),
+              Text('Para enviar el reporte con ubicación, necesitas activar el GPS.'),
+              SizedBox(height: 8),
+              Text('¿Qué deseas hacer?', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Opción: Enviar sin ubicación
+                setState(() {
+                  _ubicacionRequerida = false;
+                });
+                _enviarReporte(); // Reintentar envío sin ubicación
+              },
+              child: Text('ENVIAR SIN UBICACIÓN', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _abrirConfiguracionGPS();
+              },
+              child: Text('ACTIVAR GPS', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('CANCELAR'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ✅ ABRIR CONFIGURACIÓN DE GPS
+  Future<void> _abrirConfiguracionGPS() async {
+    try {
+      await Geolocator.openLocationSettings();
+      // Verificar estado después de abrir configuración
+      await Future.delayed(Duration(seconds: 2)); // Esperar un poco
+      await _verificarEstadoGPS();
+    } catch (e) {
+      print('Error abriendo configuración GPS: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo abrir la configuración de GPS'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ✅ ACTUALIZAR ESTADO GPS PERIÓDICAMENTE
+  void _iniciarMonitorGPS() {
+    Future.delayed(Duration(seconds: 5), () {
+      if (mounted) {
+        _verificarEstadoGPS();
+        _iniciarMonitorGPS(); // Continuar monitoreo
+      }
+    });
   }
 
   void _cleanFormulario() {
@@ -211,6 +400,18 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       appBar: AppBar(
         title: const Text('Reporte Diario'),
         backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
+        actions: [
+          // ✅ INDICADOR DE ESTADO GPS EN APP BAR
+          IconButton(
+            icon: Icon(
+              _gpsActivado ? Icons.location_on : Icons.location_off,
+              color: _gpsActivado ? Colors.green : Colors.red,
+            ),
+            onPressed: _verificarEstadoGPS,
+            tooltip: _gpsActivado ? 'GPS Activado' : 'GPS Desactivado - Toca para verificar',
+          ),
+        ],
       ),
       body: StreamBuilder<SyncStatus>(
         stream: _syncService.syncStatusStream,
@@ -222,6 +423,61 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ✅ INDICADOR DE ESTADO GPS
+                Container(
+                  padding: EdgeInsets.all(12),
+                  margin: EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: _gpsActivado ? Colors.green.shade50 : Colors.orange.shade50,
+                    border: Border.all(
+                      color: _gpsActivado ? Colors.green : Colors.orange,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _gpsActivado ? Icons.location_on : Icons.location_off,
+                        color: _gpsActivado ? Colors.green : Colors.orange,
+                        size: 20,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _gpsActivado ? 'GPS Activado' : 'GPS Desactivado',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: _gpsActivado ? Colors.green : Colors.orange,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              _gpsActivado
+                                  ? 'Ubicación disponible para el reporte'
+                                  : 'Active el GPS para capturar ubicación',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!_gpsActivado)
+                        TextButton(
+                          onPressed: _abrirConfiguracionGPS,
+                          child: Text(
+                            'ACTIVAR',
+                            style: TextStyle(
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
                 // Indicador de estado de sincronización
                 if (syncStatus != null)
                   Container(
@@ -271,6 +527,49 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                     ),
                   ),
 
+                // ✅ INDICADOR DE CAPTURA DE UBICACIÓN DURANTE ENVÍO
+                if (_isSubmitting && _ubicacionRequerida)
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    margin: EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      border: Border.all(color: Colors.blue.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.location_on, size: 20, color: Colors.blue),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Capturando ubicación exacta...',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                _coordenadas,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontFamily: 'Monospace',
+                                  color: Colors.blue.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // FORMULARIO ORIGINAL
                 Form(
                   key: _formKey,
                   child: Column(
@@ -473,21 +772,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                       ),
                       const SizedBox(height: 24),
 
-                      // // Incidencias
-                      // TextFormField(
-                      //   controller: _incidenciasController,
-                      //   maxLines: 3,
-                      //   decoration: InputDecoration(
-                      //     labelText: 'Incidencias',
-                      //     hintText: 'Ingrese incidencias si las hay...',
-                      //     border: OutlineInputBorder(
-                      //       borderRadius: BorderRadius.circular(8),
-                      //     ),
-                      //     contentPadding: const EdgeInsets.all(12),
-                      //   ),
-                      // ),
-                      // const SizedBox(height: 16),
-
                       // Observaciones
                       TextFormField(
                         controller: _observacionesController,
@@ -572,5 +856,21 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _codigoEstacionController.dispose();
+    _transmitidoController.dispose();
+    _rInicialiController.dispose();
+    _rFinalController.dispose();
+    _cInicialiController.dispose();
+    _cFinalController.dispose();
+    _observacionesController.dispose();
+    _incidenciasController.dispose();
+    _rTotal.dispose();
+    _cTotal.dispose();
+    _fechaController.dispose();
+    super.dispose();
   }
 }

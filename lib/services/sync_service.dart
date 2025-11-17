@@ -2,6 +2,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/api_service.dart';
 import '../services/database_service.dart';
 import '../models/registro_despliegue_model.dart';
+import 'auth_service.dart';
 
 class SyncService {
   static final SyncService _instance = SyncService._internal();
@@ -63,9 +64,22 @@ class SyncService {
 
       print('📤 Sincronizando ${registrosPendientes.length} registros...');
 
+      // Obtener el token una sola vez
+      final accessToken = await _obtenerAccessToken();
+      if (accessToken.isEmpty) {
+        print('❌ No se pudo obtener access token');
+        return;
+      }
+
+      final apiService = ApiService(accessToken: accessToken);
+
       for (var registro in registrosPendientes) {
         try {
-          final enviado = await ApiService().enviarRegistroDespliegue(registro);
+          final registroMap = registro.toApiMap();
+
+          // ✅ CORREGIDO: Usar el método que retorna bool directamente
+          final enviado = await apiService.enviarRegistroDespliegue(registroMap);
+
           if (enviado) {
             await db.marcarComoSincronizado(registro.id!);
             print('✅ Registro ${registro.id} sincronizado');
@@ -80,6 +94,25 @@ class SyncService {
       _lastSyncAttempt = DateTime.now();
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  /// ✅ Obtener accessToken desde AuthService
+  Future<String> _obtenerAccessToken() async {
+    try {
+      final authService = AuthService();
+      final user = await authService.getCurrentUser();
+
+      if (user != null) {
+        // Dependiendo de cómo tengas implementado AuthService
+        // Podrías necesitar obtener el token de otra manera
+        final token = await authService.getAccessToken();
+        return token ?? '';
+      }
+      return '';
+    } catch (e) {
+      print('Error obteniendo access token: $e');
+      return '';
     }
   }
 
