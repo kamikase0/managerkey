@@ -1,6 +1,7 @@
-// views/login_page.dart (CORREGIDO)
+// views/login_page.dart (VERSIÓN CORREGIDA)
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io'; // Importar para SocketException
 import '../main.dart';
 import '../services/auth_service.dart';
 import 'home_page.dart';
@@ -24,17 +25,17 @@ class _LoginPageState extends State<LoginPage> {
       'operador': {
         'email': 'j.quisbert.a',
         'username': 'j.quisbert.a',
-        'group': 'Operador'
+        'group': 'Operador',
       },
       'soporte': {
         'email': 'soporte@test.com',
         'username': 'carlos_soporte',
-        'group': 'soporte'
+        'group': 'soporte',
       },
       'coordinador': {
         'email': 'coordinador@test.com',
         'username': 'ana_coordinadora',
-        'group': 'coordinador'
+        'group': 'coordinador',
       },
     };
 
@@ -65,15 +66,16 @@ class _LoginPageState extends State<LoginPage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('access_token', authResponse.access);
 
-      // ✅ Navegar directamente sin inicializar ReporteSyncService aquí
-      // El HomePageWrapper se encargará de inicializarlo
+      // Navegar al home
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const HomePageWrapper()),
       );
-
     } catch (e) {
       if (!mounted) return;
-      _showErrorDialog('Error en el login: ${e.toString()}');
+
+      // MANEJO ESPECÍFICO DE ERRORES DE CONEXIÓN
+      String errorMessage = _getUserFriendlyErrorMessage(e);
+      _showErrorDialog(errorMessage);
     } finally {
       if (mounted) {
         setState(() {
@@ -83,20 +85,95 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  String _getUserFriendlyErrorMessage(dynamic error) {
+    print('🔍 Error original: $error');
+
+    // Verificar si es error de conexión
+    if (error is SocketException) {
+      return 'No se puede conectar al servidor. Verifica tu conexión a internet.';
+    }
+
+    // Verificar si es error de timeout
+    if (error.toString().contains('timed out') ||
+        error.toString().contains('timeout')) {
+      return 'La conexión al servidor tardó demasiado. Verifica tu conexión a internet.';
+    }
+
+    // Verificar si es error de DNS o conexión
+    if (error.toString().contains('Failed host lookup') ||
+        error.toString().contains('Network is unreachable') ||
+        error.toString().contains('Connection refused')) {
+      return 'No se puede alcanzar el servidor. Verifica tu conexión a internet o contacta al administrador.';
+    }
+
+    // Verificar si es error de credenciales
+    if (error.toString().contains('401') ||
+        error.toString().contains('Unauthorized') ||
+        error.toString().contains('invalid credentials')) {
+      return 'Usuario o contraseña incorrectos.';
+    }
+
+    // Verificar si es error del servidor
+    if (error.toString().contains('500') ||
+        error.toString().contains('Internal Server Error')) {
+      return 'Error interno del servidor. Por favor, intenta más tarde.';
+    }
+
+    // Verificar si el mensaje contiene la IP del servidor (lo que quieres evitar)
+    final errorString = error.toString();
+    if (errorString.contains('http://') || errorString.contains('https://')) {
+      return 'Error de conexión con el servidor. Verifica tu conexión a internet.';
+    }
+
+    // Mensaje genérico para otros errores
+    return 'Error al iniciar sesión. Verifica tus credenciales y conexión.';
+  }
+
   void _showErrorDialog(String message) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Error de conexión'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 16),
+            const Text(
+              'Sugerencias:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text('• Verifica tu conexión a internet'),
+            const Text('• Revisa la configuración de red'),
+            const Text('• Contacta al administrador si el problema persiste'),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
+            child: const Text('Entendido'),
           ),
         ],
       ),
     );
+  }
+
+  // Método para verificar conexión antes de intentar login
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -118,11 +195,25 @@ class _LoginPageState extends State<LoginPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const Icon(
+                        Icons.account_tree,
+                        size: 64,
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(height: 16),
                       const Text(
-                        'Login',
+                        'Iniciar Sesión',
                         style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Sistema de Reportes Empadronamiento',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
                         ),
                       ),
                       const SizedBox(height: 32),
@@ -132,10 +223,10 @@ class _LoginPageState extends State<LoginPage> {
                         controller: _emailController,
                         decoration: const InputDecoration(
                           labelText: 'Usuario',
+                          prefixIcon: Icon(Icons.person),
                           border: OutlineInputBorder(),
                         ),
-                        validator: (value) =>
-                        value == null || value.isEmpty
+                        validator: (value) => value == null || value.isEmpty
                             ? 'Por favor ingresa tu usuario'
                             : null,
                       ),
@@ -147,10 +238,14 @@ class _LoginPageState extends State<LoginPage> {
                         controller: _passwordController,
                         decoration: InputDecoration(
                           labelText: 'Contraseña',
+                          prefixIcon: const Icon(Icons.lock),
                           border: const OutlineInputBorder(),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _showPassword ? Icons.visibility : Icons.visibility_off,
+                              _showPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                              color: Colors.grey,
                             ),
                             onPressed: () {
                               setState(() => _showPassword = !_showPassword);
@@ -158,8 +253,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         obscureText: !_showPassword,
-                        validator: (value) =>
-                        value == null || value.isEmpty
+                        validator: (value) => value == null || value.isEmpty
                             ? 'Por favor ingresa tu contraseña'
                             : null,
                       ),
@@ -173,7 +267,8 @@ class _LoginPageState extends State<LoginPage> {
                           onPressed: _isLoading ? null : _submitLogin,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: Colors.lightBlueAccent,
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -181,10 +276,15 @@ class _LoginPageState extends State<LoginPage> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
-                              : const Text('Iniciar Sesión'),
+                              : const Text(
+                            'Iniciar Sesión',
+                            style: TextStyle(fontSize: 16),
+                          ),
                         ),
                       ),
 
@@ -205,23 +305,44 @@ class _LoginPageState extends State<LoginPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: ElevatedButton(
+                            child: OutlinedButton(
                               onPressed: () => _quickLogin('operador'),
-                              child: const Text('Operador', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.blue,
+                                side: const BorderSide(color: Colors.blue),
+                              ),
+                              child: const Text(
+                                'Operador',
+                                style: TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: ElevatedButton(
+                            child: OutlinedButton(
                               onPressed: () => _quickLogin('soporte'),
-                              child: const Text('Soporte', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.green,
+                                side: const BorderSide(color: Colors.green),
+                              ),
+                              child: const Text(
+                                'Soporte',
+                                style: TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: ElevatedButton(
+                            child: OutlinedButton(
                               onPressed: () => _quickLogin('coordinador'),
-                              child: const Text('Coordinador', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.orange,
+                                side: const BorderSide(color: Colors.orange),
+                              ),
+                              child: const Text(
+                                'Coordinador',
+                                style: TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
                         ],

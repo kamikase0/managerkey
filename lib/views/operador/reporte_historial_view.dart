@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 import '../../services/auth_service.dart';
@@ -22,12 +21,10 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
   late AuthService _authService;
   late ApiService _apiService;
   late ReporteSyncService _syncService;
-  //ApiService? _apiService;
 
   @override
-  void initState() {
-    super.initState();
-    // Es mejor inicializar los servicios aquí para acceder al context de forma segura
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _authService = Provider.of<AuthService>(context, listen: false);
     _apiService = Provider.of<ApiService>(context, listen: false);
     _syncService = Provider.of<ReporteSyncService>(context, listen: false);
@@ -54,19 +51,11 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         return;
       }
 
-      final accessToken = await _authService.getAccessToken();
-      if (accessToken == null) {
-        _showError("Sesión expirada. Por favor, inicie sesión de nuevo.");
-        return;
-      }
-
-      _apiService = ApiService(accessToken: accessToken);
-
       // ============================================
       // 2. OBTENER REPORTES (EN PARALELO PARA MÁS VELOCIDAD)
       // ============================================
       final results = await Future.wait([
-        _fetchRemoteReportes(accessToken, operadorId),
+        _fetchRemoteReportes(operadorId),
         _fetchLocalReportes(operadorId),
       ]);
 
@@ -76,24 +65,19 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
       // ================================
       // 3. COMBINAR Y ELIMINAR DUPLICADOS
       // ================================
-
-      // Usamos un mapa para detectar duplicados de manera eficiente.
-      // La clave será única para cada reporte (basada en sus datos).
       final Map<String, Map<String, dynamic>> reportesUnicos = {};
 
-      // Primero agregamos los reportes remotos (son la "verdad" principal)
+      // Primero agregamos los reportes remotos
       for (final reporte in remotos) {
-        // Usamos una clave robusta para identificar un reporte único.
         final key = _generateReportKey(reporte);
-        reportesUnicos[key] = reporte;
+        reportesUnicos[key] = {...reporte, "synced": true};
       }
 
-      // Ahora agregamos los reportes locales, SOLO si no existen ya en el mapa.
+      // Agregamos los reportes locales si no existen
       for (final reporte in locales) {
         final key = _generateReportKey(reporte);
         if (!reportesUnicos.containsKey(key)) {
-          // Este es un reporte local que no está en el servidor.
-          reportesUnicos[key] = reporte;
+          reportesUnicos[key] = {...reporte, "synced": false};
         }
       }
 
@@ -105,7 +89,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
       merged.sort((a, b) {
         final fa = DateTime.tryParse(a["fecha_reporte"] ?? "") ?? DateTime(1970);
         final fb = DateTime.tryParse(b["fecha_reporte"] ?? "") ?? DateTime(1970);
-        return fb.compareTo(fa); // Orden descendente (más nuevo primero)
+        return fb.compareTo(fa);
       });
 
       if (mounted) {
@@ -114,13 +98,13 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         });
       }
 
-      // Opcional: Limpiar la base de datos local de reportes que ya se sincronizaron
+      // Limpiar reportes locales ya sincronizados
       await _syncService.clearSyncedLocalReportes(operadorId);
 
     } catch (e, stacktrace) {
-      print("ERROR FATAL en _loadData: $e");
+      print("ERROR en _loadData: $e");
       print(stacktrace);
-      _showError("Ocurrió un error al cargar los reportes.");
+      _showError("Ocurrió un error al cargar los reportes: ${e.toString()}");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -128,65 +112,76 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
 
   // MÉTODO PARA GENERAR UNA CLAVE ÚNICA PARA UN REPORTE
   String _generateReportKey(Map<String, dynamic> reporte) {
-    // Tomamos la fecha y la truncamos a minutos para evitar diferencias por segundos/milisegundos
     final fechaBase = DateTime.tryParse(reporte['fecha_reporte'] ?? '') ?? DateTime(1970);
-    final fechaTruncada = fechaBase.toIso8601String().substring(0, 16); // 'YYYY-MM-DDTHH:mm'
-    return '${fechaTruncada}_${reporte['estacion']}_${reporte['operador']}';
+    final fechaTruncada = fechaBase.toIso8601String().substring(0, 16);
+    final estacion = reporte['estacion']?.toString() ?? 'unknown';
+    final operador = reporte['operador']?.toString() ?? 'unknown';
+    return '${fechaTruncada}_${estacion}_$operador';
   }
 
-  // MÉTODOS AUXILIARES PARA OBTENER DATOS
-  Future<List<Map<String, dynamic>>> _fetchRemoteReportes(String accessToken, int operadorId) async {
+  // ✅ CORREGIDO: Método simplificado sin verificación compleja
+  Future<List<Map<String, dynamic>>> _fetchRemoteReportes(int operadorId) async {
     try {
-      // ✅ CORREGIDO: Usar _apiService ya inicializado
-      // if (_apiService == null) {
-      //   throw Exception("ApiService no inicializado");
-      // }
-
+      // ✅ INTENTAR DIRECTAMENTE - si falla, capturamos la excepción
       final remotos = await _apiService.obtenerReportesDiarios();
 
       // Filtrar y preparar los datos
       return remotos
           .where((r) => r["operador"] == operadorId)
-          .map((r) => {...r, "synced": true})
+          .map((r) => {...r})
           .toList();
     } catch (e) {
-      print("No se pudieron obtener reportes remotos: $e");
+      print("❌ Error obteniendo reportes remotos: $e");
       return [];
     }
   }
 
   Future<List<Map<String, dynamic>>> _fetchLocalReportes(int operadorId) async {
-    final locales = await _syncService.getReportes();
-    // ¡¡CORRECCIÓN IMPORTANTE!! Filtrar locales por el operador actual.
-    return locales
-        .where((r) => r["operador"] == operadorId && r["synced"] == 0)
-        .map((r) => {...r, "synced": false}) // Marcar como no sincronizados
-        .toList();
+    try {
+      final locales = await _syncService.getReportes();
+      return locales
+          .where((r) => r["operador"] == operadorId && (r["synced"] == 0 || r["synced"] == false))
+          .map((r) => {...r})
+          .toList();
+    } catch (e) {
+      print("❌ Error obteniendo reportes locales: $e");
+      return [];
+    }
   }
 
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }
 
-  // ===================================
-  // WIDGETS (sin cambios, ya están bien)
-  // ===================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("HISTÓRICO DE REPORTES"),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
+        backgroundColor: Colors.blue.shade700,
+        foregroundColor: Colors.white,
+        elevation: 2,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("Cargando reportes...", style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      )
           : _reportes.isEmpty
           ? _buildEmptyState()
           : RefreshIndicator(
@@ -202,7 +197,12 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
           },
         ),
       ),
-      bottomNavigationBar: _buildBottomBar(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _isLoading ? null : _loadData,
+        backgroundColor: Colors.blue.shade700,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.refresh),
+      ),
     );
   }
 
@@ -211,31 +211,25 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.assignment_late, size: 64, color: Colors.grey[400]),
+          Icon(Icons.assignment_outlined, size: 80, color: Colors.grey.shade400),
           const SizedBox(height: 16),
-          Text("No hay reportes",
-              style: TextStyle(fontSize: 16, color: Colors.grey[600])),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomBar() {
-    return Container(
-      color: Colors.grey[300],
-      padding: const EdgeInsets.all(12),
-      child: SizedBox(
-        height: 50,
-        child: ElevatedButton(
-          onPressed: _isLoading ? null : _loadData,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+          const Text(
+            "No hay reportes",
+            style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500),
           ),
-          child:
-          const Text("REFRESCAR", style: TextStyle(color: Colors.white)),
-        ),
+          const SizedBox(height: 8),
+          const Text(
+            "Los reportes aparecerán aquí cuando los generes",
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text("Recargar"),
+          ),
+        ],
       ),
     );
   }
@@ -245,62 +239,96 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     required int index,
   }) {
     final sincronizado = reporte["synced"] == true;
+    final fecha = reporte['fecha_reporte']?.toString() ?? '';
+    final estacion = reporte['estacion']?.toString() ?? 'N/A';
+    final contadorInicialR = reporte['contador_inicial_r']?.toString() ?? '0';
+    final contadorFinalR = reporte['contador_final_r']?.toString() ?? '0';
+    final contadorInicialC = reporte['contador_inicial_c']?.toString() ?? '0';
+    final contadorFinalC = reporte['contador_final_c']?.toString() ?? '0';
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(index, sincronizado),
-          const SizedBox(height: 10),
-          Text("Estación: ${reporte['estacion'] ?? 'N/A'}",
-              style: const TextStyle(fontSize: 11)),
-          Text(
-              "Ri: ${reporte['contador_inicial_r']} | Rf: ${reporte['contador_final_r']}",
-              style: const TextStyle(fontSize: 11)),
-          Text(
-              "Ci: ${reporte['contador_inicial_c']} | Cf: ${reporte['contador_final_c']}",
-              style: const TextStyle(fontSize: 11)),
-          const SizedBox(height: 8),
-          Text(
-            "Fecha: ${_formatearFecha(reporte['fecha_reporte'] ?? '')}",
-            style: TextStyle(color: Colors.grey[600], fontSize: 10),
-          ),
-        ],
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header con número de reporte y estado
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Reporte #$index",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: sincronizado ? Colors.green : Colors.orange,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    sincronizado ? "ENVIADO" : "LOCAL",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Información del reporte
+            _buildInfoRow("Estación", estacion),
+            _buildInfoRow("Contador R", "Inicial: $contadorInicialR | Final: $contadorFinalR"),
+            _buildInfoRow("Contador C", "Inicial: $contadorInicialC | Final: $contadorFinalC"),
+            const SizedBox(height: 8),
+
+            // Fecha
+            Text(
+              "Fecha: ${_formatearFecha(fecha)}",
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildHeader(int index, bool sincronizado) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text("Reporte $index",
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, fontSize: 13)),
-        Container(
-          width: 55,
-          height: 26,
-          decoration: BoxDecoration(
-            color: sincronizado ? Colors.green : Colors.orange, // Cambiado a naranja
-            borderRadius: BorderRadius.circular(13),
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              "$label:",
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-          alignment: Alignment.center,
-          child: Text(
-            sincronizado ? "ENVIADO" : "LOCAL", // Cambiado a LOCAL
-            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -309,7 +337,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
       final f = DateTime.parse(fechaStr);
       return "${f.day.toString().padLeft(2, '0')}/${f.month.toString().padLeft(2, '0')}/${f.year} ${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}";
     } catch (_) {
-      return "N/A";
+      return "Fecha no disponible";
     }
   }
 }

@@ -26,6 +26,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+//        manifestPlaceholders["MAPS_API_KEY"] = project.properties["MAPS_API_KEY"] ?: ""
     }
 
     lint {

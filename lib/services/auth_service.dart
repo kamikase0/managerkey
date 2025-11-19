@@ -6,108 +6,147 @@ import '../models/auth_response.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-static final AuthService _instance = AuthService._internal();
-factory AuthService() => _instance;
-AuthService._internal();
+  static final AuthService _instance = AuthService._internal();
 
-static const String _authKey = 'auth_tokens';
-static const String _userKey = 'user_data';
+  factory AuthService() => _instance;
 
-static const String _baseUrl = '${Enviroment.apiUrl}token/';
+  AuthService._internal();
 
-Future<AuthResponse> loginWithEmail(String username, String password) async {
-final url = Uri.parse(_baseUrl);
+  static const String _authKey = 'auth_tokens';
+  static const String _userKey = 'user_data';
 
-final response = await http.post(
-url,
-headers: {'Content-Type': 'application/json'},
-body: json.encode({
-'username': username,
-'password': password,
-}),
-);
+  static const String _baseUrl = '${Enviroment.apiUrl}token/';
+  static const String _refreshUrl = '${Enviroment.apiUrl}token/refresh/';
 
-if (response.statusCode == 200) {
-final data = json.decode(response.body);
-final authResponse = AuthResponse.fromJson(data);
+  Future<AuthResponse> loginWithEmail(String username, String password) async {
+    final url = Uri.parse(_baseUrl);
 
-await _saveAuthData(authResponse);
-return authResponse;
-} else {
-throw Exception('Error de autenticación: ${response.body}');
-}
-}
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({'username': username, 'password': password}),
+    );
 
-Future<void> _saveAuthData(AuthResponse authResponse) async {
-final prefs = await SharedPreferences.getInstance();
-await prefs.setString(_authKey, json.encode(authResponse.toJson()));
-await prefs.setString(_userKey, json.encode(authResponse.user.toJson()));
-}
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final authResponse = AuthResponse.fromJson(data);
 
-Future<void> logout() async {
-final prefs = await SharedPreferences.getInstance();
-await prefs.remove(_authKey);
-await prefs.remove(_userKey);
-}
-
-Future<bool> isAuthenticated() async {
-final prefs = await SharedPreferences.getInstance();
-return prefs.containsKey(_authKey);
-}
-
-Future<User?> getCurrentUser() async {
-final prefs = await SharedPreferences.getInstance();
-final userJson = prefs.getString(_userKey);
-if (userJson != null) {
-final userMap = json.decode(userJson);
-return User.fromJson(userMap);
-}
-return null;
-}
-
-// =======================================================
-// MÉTODO NUEVO: Añade esta función a tu servicio
-// =======================================================
-Future<String?> getAccessToken() async {
-  final prefs = await SharedPreferences.getInstance();
-  final authJson = prefs.getString(_authKey); // _authKey es 'auth_tokens'
-
-  if (authJson != null) {
-    try {
-      final tokenMap = json.decode(authJson) as Map<String, dynamic>;
-      // La API devuelve 'access', el modelo usa 'accessToken'. Cubrimos ambos casos.
-      return tokenMap['access'] ?? tokenMap['accessToken'];
-    } catch (e) {
-      print('Error al decodificar el token de acceso: $e');
-      return null;
+      await _saveAuthData(authResponse);
+      return authResponse;
+    } else {
+      throw Exception('Error de autenticación: ${response.body}');
     }
   }
-  return null; // Retorna null si no se encuentra el token
-}
 
-Future<String?> getUserGroup() async {
-final user = await getCurrentUser();
-return user?.primaryGroup;
-}
+  Future<void> _saveAuthData(AuthResponse authResponse) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_authKey, json.encode(authResponse.toJson()));
+    await prefs.setString(_userKey, json.encode(authResponse.user.toJson()));
+  }
 
-Future<String> getWelcomeMessage() async {
-final user = await getCurrentUser();
-return user != null ? ' ${user.username}' : 'Bienvenido/a';
-}
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_authKey);
+    await prefs.remove(_userKey);
+  }
 
-Future<String?> getTipoOperador() async {
-final user = await getCurrentUser();
-return user?.tipoOperador;
-}
+  Future<bool> isAuthenticated() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_authKey);
+  }
 
-Future<int?> getIdOperador() async {
-final user = await getCurrentUser();
-return user?.idOperador;
-}
+  Future<User?> getCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString(_userKey);
+    if (userJson != null) {
+      final userMap = json.decode(userJson);
+      return User.fromJson(userMap);
+    }
+    return null;
+  }
 
-Future<bool> isOperadorRural() async {
-final user = await getCurrentUser();
-return user?.isOperadorRural ?? false;
-}
+  // =======================================================
+  // MÉTODO NUEVO: Añade esta función a tu servicio
+  // =======================================================
+  Future<String?> getAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authJson = prefs.getString(_authKey); // _authKey es 'auth_tokens'
 
+    if (authJson != null) {
+      try {
+        final tokenMap = json.decode(authJson) as Map<String, dynamic>;
+        // La API devuelve 'access', el modelo usa 'accessToken'. Cubrimos ambos casos.
+        return tokenMap['access'] ?? tokenMap['accessToken'];
+      } catch (e) {
+        print('Error al decodificar el token de acceso: $e');
+        return null;
+      }
+    }
+    return null; // Retorna null si no se encuentra el token
+  }
+
+  Future<String?> getUserGroup() async {
+    final user = await getCurrentUser();
+    return user?.primaryGroup;
+  }
+
+  Future<String> getWelcomeMessage() async {
+    final user = await getCurrentUser();
+    return user != null ? ' ${user.username}' : 'Bienvenido/a';
+  }
+
+  Future<String?> getTipoOperador() async {
+    final user = await getCurrentUser();
+    return user?.tipoOperador;
+  }
+
+  Future<int?> getIdOperador() async {
+    final user = await getCurrentUser();
+    return user?.idOperador;
+  }
+
+  Future<bool> isOperadorRural() async {
+    final user = await getCurrentUser();
+    return user?.isOperadorRural ?? false;
+  }
+
+  Future<bool> refreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authJson = prefs.getString(_authKey);
+
+    if (authJson == null) {
+      return false; // No hay tokens guardados
+    }
+
+    final tokenMap = json.decode(authJson) as Map<String, dynamic>;
+    final refreshToken = tokenMap['refresh'] ?? tokenMap['refreshToken'];
+
+    if (refreshToken == null) {
+      return false; // No hay refresh token
+    }
+
+    try {
+      final response = await http.post(
+        Uri.parse(_refreshUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'refresh': refreshToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final newTokens = json.decode(response.body);
+        // El nuevo access token se guarda, el refresh token se mantiene
+        tokenMap['access'] = newTokens['access'];
+        await prefs.setString(_authKey, json.encode(tokenMap));
+        print('✅ Token de acceso refrescado exitosamente.');
+        return true;
+      } else {
+        print('❌ Falló el refresco del token. Forzando logout.');
+        await logout(); // Si el refresh token también expira, limpiamos todo.
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error durante el refresco del token: $e');
+      return false;
+    }
+  }
 }

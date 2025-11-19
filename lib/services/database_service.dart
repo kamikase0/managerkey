@@ -15,7 +15,6 @@ class DatabaseService {
 
   Future<Database> get database async {
     if(_database != null) return _database!;
-    // _database ??= await _initializeDatabase();
     _database = await _initializeDatabase();
     return _database!;
   }
@@ -267,7 +266,12 @@ class DatabaseService {
     try {
       final db = await database;
 
-      final mappedData = Map<String, dynamic>.from (data);
+      // ✅ LIMPIAR DATOS ANTES DE INSERTAR
+      final cleanedData = _limpiarDatosParaSQLite(data);
+
+      final mappedData = Map<String, dynamic>.from(cleanedData);
+
+      // ✅ MANTENER EL MAPEO EXISTENTE
       if (mappedData.containsKey('registro_c')) {
         mappedData['contador_c'] = mappedData['registro_c'];
         mappedData.remove('registro_c');
@@ -292,7 +296,6 @@ class DatabaseService {
       rethrow;
     }
   }
-
   /// Obtener reportes no sincronizados
   Future<List<Map<String, dynamic>>> getUnsyncedReportes() async {
     try {
@@ -423,14 +426,14 @@ class DatabaseService {
       // Mapear los datos al formato de la tabla registros_despliegue
       final mappedData = {
         'destino': data['destino'] ?? 'REPORTE DIARIO',
-        'latitud': data['latitud_despliegue'] ?? '',
-        'longitud': data['longitud_despliegue'] ?? '',
+        'latitud': data['latitud'] ?? '',
+        'longitud': data['longitud'] ?? '',
         'descripcion_reporte': data['observaciones'] ?? '',
         'estado': data['estado'] ?? 'REPORTE ENVIADO',
         'sincronizar': data['sincronizar'] ?? true ? 1 : 0,
         'observaciones': data['observaciones'] ?? '',
         'incidencias': data['incidencias'] ?? '',
-        'fecha_hora': data['fecha_hora_salida'] ?? DateTime.now().toIso8601String(),
+        'fecha_hora': data['fecha_hora'] ?? DateTime.now().toIso8601String(),
         'operador_id': data['operador'] ?? 0,
         'sincronizado': 0,
       };
@@ -447,5 +450,16 @@ class DatabaseService {
     }
   }
 
+  Map<String, dynamic> _limpiarDatosParaSQLite(Map<String, dynamic> data) {
+    return data.map((key, value) {
+      if (value == null) {
+        return MapEntry(key, '');
+      } else if (value is bool) {
+        return MapEntry(key, value ? 1 : 0);
+      } else {
+        return MapEntry(key, value);
+      }
+    });
+  }
 
 }

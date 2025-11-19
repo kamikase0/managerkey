@@ -32,9 +32,11 @@
 	<key>NSCameraUsageDescription</key>
     <string>Esta aplicación necesita acceso a la cámara para escanear códigos QR</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Se necesita acceso a la ubicación para registrar despliegues</string>
+    <string>Se necesita acceso a la ubicación para registrar despliegues/reportes</string>
     <key>NSLocationAlwaysUsageDescription</key>
     <string>Se necesita acceso a la ubicación para registrar despliegues</string>
+    <key>NSLocationAlwaysAndWhenInUsageDescription</key>
+    <string>Se necesita acceso a la ubicación para registrar reportes</string>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>

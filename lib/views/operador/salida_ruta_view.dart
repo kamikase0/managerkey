@@ -7,6 +7,7 @@ import '../../services/location_service.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
+import '../../services/salida_llegada_service.dart';
 
 class SalidaRutaView extends StatefulWidget {
   final int idOperador;
@@ -21,7 +22,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   final _observacionesController = TextEditingController();
   final _destino = TextEditingController();
 
-  bool _sincronizarConServidor = false;
+  bool _sincronizarConServidor = true;
   bool _isLoading = false;
   String _coordenadas = 'No capturadas';
 
@@ -29,29 +30,46 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   String _userRole = 'Cargando...';
   String _userEmail = 'Cargando...';
   User? _currentUser;
+  late AuthService _authService;
+  late DatabaseService _databaseService;
+  late SalidaLlegadaService _salidaLlegadaService;
+
+  int? _salidaLocalId; // Guardar ID de salida para usarlo en llegada
 
   @override
   void initState() {
     super.initState();
+    _authService = AuthService();
+    _databaseService = DatabaseService();
+    _salidaLlegadaService = SalidaLlegadaService();
     _loadUserData();
   }
 
   Future<void> _loadUserData() async {
-    final user = await AuthService().getCurrentUser();
-    if (user != null) {
+    try {
+      final user = await _authService.getCurrentUser();
+      if (user != null) {
+        setState(() {
+          _currentUser = user;
+          _userName = user.username;
+          _userRole = user.groups.isNotEmpty ? user.groups.join(', ') : 'Sin rol asignado';
+          _userEmail = user.email;
+        });
+        print('✅ Usuario cargado: ${user.username}');
+        print('🔑 ID Operador a usar: ${widget.idOperador}');
+      } else {
+        setState(() {
+          _userName = 'Usuario No Identificado';
+          _userRole = 'Rol No Asignado';
+          _userEmail = 'Email no disponible';
+        });
+      }
+    } catch (e) {
+      print('❌ Error al cargar usuario: $e');
       setState(() {
-        _currentUser = user;
-        _userName = user.username;
-        _userRole = user.groups.join(', ');
-        _userEmail = user.email;
-      });
-      print('✅ Usuario cargado: ${user.username}');
-      print('🔑 ID Operador a usar: ${widget.idOperador}');
-    } else {
-      setState(() {
-        _userName = 'Usuario No Identificado';
-        _userRole = 'Rol No Asignado';
-        _userEmail = 'Email no disponible';
+        _userName = 'Error al cargar';
+        _userRole = 'Error';
+        _userEmail = 'Error';
       });
     }
   }
@@ -65,219 +83,70 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     setState(() => _isLoading = true);
 
     try {
-      final position = await LocationService().getCurrentLocation();
-      if (position == null) {
-        _mostrarError('No se pudo obtener la ubicación');
-        return;
-      }
-
-      setState(() {
-        _coordenadas =
-        'Lat: ${position.latitude.toStringAsFixed(6)}\nLong: ${position.longitude.toStringAsFixed(6)}';
-      });
-
-      final ahora = DateTime.now();
-
-      final registro = RegistroDespliegue(
+      // Usar el servicio integrado de salida-llegada
+      final resultado = await _salidaLlegadaService.registrarSalida(
         destino: _destino.text,
-        latitud: position.latitude.toString(),
-        longitud: position.longitude.toString(),
-        descripcionReporte: null,
-        estado: "DESPLIEGUE",
-        sincronizar: _sincronizarConServidor,
         observaciones: _observacionesController.text,
-        incidencias: "",
-        fechaHora: ahora.toIso8601String(),
-        operadorId: widget.idOperador,
-        sincronizado: false,
+        idOperador: widget.idOperador,
+        sincronizarConServidor: _sincronizarConServidor,
       );
 
-      final db = DatabaseService();
-      final localId = await db.insertRegistroDespliegue(registro);
-      print('✅ Registro de salida creado con ID: $localId');
+      if (resultado['exitoso']) {
+        // Guardar ID local de salida para usar en llegada
+        _salidaLocalId = resultado['localId'];
 
-      if (_sincronizarConServidor) {
-        final tieneInternet = await SyncService().verificarConexion();
-        if (tieneInternet) {
-          // ✅ CORREGIDO: Obtener token desde AuthService
-          final authService = AuthService();
-          final accessToken = await authService.getAccessToken();
+        _mostrarExito(resultado['mensaje']);
+        _limpiarFormulario();
 
-          if (accessToken == null || accessToken.isEmpty) {
-            _mostrarError('No se pudo obtener el token de autenticación');
-            return;
+        // Mostrar opción de ir a registrar llegada después de 2 segundos
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _mostrarOpcionIrALlegada();
           }
-
-          final apiService = ApiService(accessToken: accessToken);
-          final registroMap = registro.toJson();
-          final enviado = await apiService.enviarRegistroDespliegue(registroMap);
-
-          if (enviado) {
-            await db.marcarComoSincronizado(localId);
-            _mostrarExito('✅ Despliegue enviado al servidor');
-          } else {
-            _mostrarError('⚠️ Error al enviar. Guardado para sincronizar después.');
-          }
-        } else {
-          _mostrarError('📡 Sin conexión. Se sincronizará cuando haya internet.');
-        }
+        });
       } else {
-        _mostrarExito('✅ Despliegue guardado localmente'); // ✅ Agregar este mensaje
+        _mostrarError(resultado['mensaje']);
       }
-
-      _limpiarFormulario();
     } catch (e) {
       print('❌ Error al registrar salida: $e');
-      _mostrarError('Error al registrar salida: $e');
+      _mostrarError('Error al registrar salida: ${e.toString()}');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // Future<void> _registrarSalida() async {
-  //   if (_destino.text.isEmpty) {
-  //     _mostrarError('El destino es requerido');
-  //     return;
-  //   }
-  //
-  //   setState(() => _isLoading = true);
-  //
-  //   try {
-  //     final position = await LocationService().getCurrentLocation();
-  //     if (position == null) {
-  //       _mostrarError('No se pudo obtener la ubicación');
-  //       return;
-  //     }
-  //
-  //     setState(() {
-  //       _coordenadas =
-  //       'Lat: ${position.latitude.toStringAsFixed(6)}\nLong: ${position.longitude.toStringAsFixed(6)}';
-  //     });
-  //
-  //     final ahora = DateTime.now();
-  //
-  //     final registro = RegistroDespliegue(
-  //       destino: _destino.text,
-  //       latitud: position.latitude.toString(),
-  //       longitud: position.longitude.toString(),
-  //       descripcionReporte: null,
-  //       estado: "DESPLIEGUE",
-  //       sincronizar: _sincronizarConServidor,
-  //       observaciones: _observacionesController.text,
-  //       incidencias: "",
-  //       fechaHora: ahora.toIso8601String(),
-  //       operadorId: widget.idOperador,
-  //       sincronizado: false,
-  //     );
-  //
-  //     final db = DatabaseService();
-  //     final localId = await db.insertRegistroDespliegue(registro);
-  //     print('✅ Registro de salida creado con ID: $localId');
-  //
-  //     if (_sincronizarConServidor) {
-  //       final tieneInternet = await SyncService().verificarConexion();
-  //       if (tieneInternet) {
-  //         final token = _currentUser?.accessToken ?? ''; // Obtener el token del usuario
-  //         final apiService = ApiService(accessToken: token); // Pasar el token
-  //         final registroMap = registro.toJson();
-  //         final enviado = await apiService.enviarRegistroDespliegue(registroMap);
-  //
-  //         if (enviado) {
-  //           await db.marcarComoSincronizado(localId);
-  //           _mostrarExito('✅ Despliegue enviado al servidor');
-  //         } else {
-  //           _mostrarError('⚠️ Error al enviar. Guardado para sincronizar después.');
-  //         }
-  //       } else {
-  //         _mostrarError('📡 Sin conexión. Se sincronizará cuando haya internet.');
-  //       }
-  //     }
-  //
-  //     _limpiarFormulario();
-  //   } catch (e) {
-  //     print('❌ Error al registrar salida: $e');
-  //     _mostrarError('Error al registrar salida: $e');
-  //   } finally {
-  //     setState(() => _isLoading = false);
-  //   }
-  // }
+  void _mostrarOpcionIrALlegada() {
+    if (!mounted) return;
 
-  // Future<void> _registrarSalida() async {
-  //   if (_destino.text.isEmpty) {
-  //     _mostrarError('El destino es requerido');
-  //     return;
-  //   }
-  //
-  //   setState(() => _isLoading = true);
-  //
-  //   try {
-  //     final position = await LocationService().getCurrentLocation();
-  //     if (position == null) {
-  //       _mostrarError('No se pudo obtener la ubicación');
-  //       return;
-  //     }
-  //
-  //     setState(() {
-  //       _coordenadas =
-  //       'Lat: ${position.latitude.toStringAsFixed(6)}\nLong: ${position.longitude.toStringAsFixed(6)}';
-  //     });
-  //
-  //     final ahora = DateTime.now();
-  //
-  //     // ✅ Usar widget.idOperador en lugar de user.id
-  //     final registro = RegistroDespliegue(
-  //       destino: _destino.text,
-  //       latitud: position.latitude.toString(),
-  //       longitud: position.longitude.toString(),
-  //       descripcionReporte: null,
-  //       estado: "DESPLIEGUE",
-  //       sincronizar: _sincronizarConServidor,
-  //       observaciones: _observacionesController.text,
-  //       incidencias: "",
-  //       fechaHora: ahora.toIso8601String(),
-  //       operadorId: widget.idOperador, // 🎯 Usar idOperador del parámetro
-  //       sincronizado: false,
-  //     );
-  //
-  //     final db = DatabaseService();
-  //     final localId = await db.insertRegistroDespliegue(registro);
-  //     print('✅ Registro de salida creado con ID: $localId');
-  //
-  //     if (_sincronizarConServidor) {
-  //       final tieneInternet = await SyncService().verificarConexion();
-  //       if (tieneInternet) {
-  //         final token = AuthService().getAccessToken();
-  //         final apiService = ApiService(accessToken: token);
-  //
-  //         final String _baseUrl = Enviroment.apiUrl;
-  //         final String _registrosEndpoint = 'registrosdespliegue/';
-  //         String apiService = '$_baseUrl$_registrosEndpoint';
-  //
-  //         final registroMap = registro.toJson();
-  //         final estado = await apiService.enviarRegistroDespliegue(registroMap);
-  //         //final enviado = await apiService.enviarRegistroDespliegue(registro);
-  //
-  //         if (estado) {
-  //           await db.marcarComoSincronizado(localId);
-  //           _mostrarExito('✅ Despliegue enviado al servidor');
-  //         } else {
-  //           _mostrarError('⚠️ Error al enviar. Guardado para sincronizar después.');
-  //         }
-  //       } else {
-  //         _mostrarError('📡 Sin conexión. Se sincronizará cuando haya internet.');
-  //       }
-  //     } else {
-  //       _mostrarExito('✅ Despliegue guardado localmente');
-  //     }
-  //
-  //     _limpiarFormulario();
-  //   } catch (e) {
-  //     print('❌ Error al registrar salida: $e');
-  //     _mostrarError('Error al registrar salida: $e');
-  //   } finally {
-  //     setState(() => _isLoading = false);
-  //   }
-  // }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Salida Registrada'),
+        content: const Text('¿Deseas registrar la llegada ahora?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Más tarde'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // Navegar a llegada con el ID de salida
+              Navigator.pushNamed(
+                context,
+                '/llegada_ruta',
+                arguments: {
+                  'idOperador': widget.idOperador,
+                  'salidaLocalId': _salidaLocalId,
+                },
+              );
+            },
+            child: const Text('Ir a Llegada'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -330,6 +199,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
           Text('ID Operador: ${widget.idOperador}',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
           Text('Email: $_userEmail', style: const TextStyle(fontSize: 13)),
+          Text('Rol: $_userRole', style: const TextStyle(fontSize: 13)),
         ],
       ),
     );
@@ -397,7 +267,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
           const SizedBox(height: 8),
           Text(_coordenadas,
               style: const TextStyle(
-                  fontSize: 13, fontFamily: 'Monospace', fontWeight: FontWeight.w500)),
+                  fontSize: 13,
+                  fontFamily: 'Monospace',
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -414,23 +286,25 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Sincronizar con Servidor',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text(
-                _sincronizarConServidor
-                    ? '📤 Enviar inmediatamente'
-                    : '💾 Solo guardar localmente',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: _sincronizarConServidor
-                        ? Colors.green.shade700
-                        : Colors.orange.shade700),
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Sincronizar con Servidor',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  _sincronizarConServidor
+                      ? '📤 Enviar inmediatamente'
+                      : '💾 Solo guardar localmente',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _sincronizarConServidor
+                          ? Colors.green.shade700
+                          : Colors.orange.shade700),
+                ),
+              ],
+            ),
           ),
           Switch(
             value: _sincronizarConServidor,
@@ -476,7 +350,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         content: Text(mensaje),
         backgroundColor: Colors.red,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -487,7 +361,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         content: Text(mensaje),
         backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -496,7 +370,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     _observacionesController.clear();
     _destino.clear();
     setState(() {
-      _sincronizarConServidor = false;
+      _sincronizarConServidor = true;
       _coordenadas = 'No capturadas';
     });
   }
