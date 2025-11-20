@@ -1,4 +1,5 @@
 // lib/services/database_service.dart (ACTUALIZADO)
+import 'package:manager_key/models/ubicacion_model.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/registro_despliegue_model.dart';
@@ -48,7 +49,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3, // NUEVO: Incrementar versión para agregar tabla ubicaciones
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -95,6 +96,19 @@ class DatabaseService {
         updated_at TEXT
       )
     ''');
+
+    // NUEVO: Tabla de ubicaciones
+    await db.execute('''
+      CREATE TABLE ubicaciones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        latitud REAL NOT NULL,
+        longitud REAL NOT NULL,
+        timestamp TEXT NOT NULL,
+        sincronizado INTEGER NOT NULL DEFAULT 0,
+        tipoUsuario TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
@@ -118,6 +132,21 @@ class DatabaseService {
           sincronizar INTEGER DEFAULT 1,
           synced INTEGER DEFAULT 0,
           updated_at TEXT
+        )
+      ''');
+    }
+
+    // NUEVO: Para versión 3, agregar tabla de ubicaciones
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ubicaciones (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          userId INTEGER NOT NULL,
+          latitud REAL NOT NULL,
+          longitud REAL NOT NULL,
+          timestamp TEXT NOT NULL,
+          sincronizado INTEGER NOT NULL DEFAULT 0,
+          tipoUsuario TEXT NOT NULL
         )
       ''');
     }
@@ -296,6 +325,7 @@ class DatabaseService {
       rethrow;
     }
   }
+
   /// Obtener reportes no sincronizados
   Future<List<Map<String, dynamic>>> getUnsyncedReportes() async {
     try {
@@ -462,4 +492,91 @@ class DatabaseService {
     });
   }
 
+  // ========== MÉTODOS PARA UBICACIONES (NUEVOS) ==========
+
+  // Métodos para manejar ubicaciones locales
+  Future<void> guardarUbicacionLocal(UbicacionModel ubicacion) async {
+    final db = await database;
+
+    // CREAR un nuevo mapa sin el ID para evitar conflictos
+    final data = ubicacion.toJson();
+    data.remove('id'); // Eliminar ID para que la base de datos lo auto-genere
+
+    try {
+      await db.insert('ubicaciones', data);
+      print('DEBUG: Ubicación guardada localmente sin ID conflictivo');
+    } catch (e) {
+      print('ERROR guardando ubicación local: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<UbicacionModel>> obtenerUbicacionesPendientes() async {
+    final db = await database;
+    final results = await db.query(
+      'ubicaciones',
+      where: 'sincronizado = ?',
+      whereArgs: [0],
+    );
+
+    return results.map((json) => UbicacionModel.fromJson(json)).toList();
+  }
+
+  Future<void> marcarUbicacionSincronizada(int id) async {
+    final db = await database;
+    await db.update(
+      'ubicaciones',
+      {'sincronizado': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // EN tu database_service.dart - AGREGA estos métodos:
+
+// NUEVO: Método para obtener estadísticas de ubicaciones
+  Future<Map<String, dynamic>> obtenerEstadisticasUbicaciones() async {
+    final db = await database;
+
+    final total = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM ubicaciones'
+    );
+
+    final pendientes = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM ubicaciones WHERE sincronizado = 0'
+    );
+
+    final masAntigua = await db.rawQuery(
+        'SELECT timestamp FROM ubicaciones WHERE sincronizado = 0 ORDER BY timestamp ASC LIMIT 1'
+    );
+
+    return {
+      'total': Sqflite.firstIntValue(total) ?? 0,
+      'pendientes': Sqflite.firstIntValue(pendientes) ?? 0,
+      'mas_antigua': masAntigua.isNotEmpty ? masAntigua.first['timestamp'] : null,
+    };
+  }
+
+// NUEVO: Método para limpiar ubicaciones antiguas ya sincronizadas
+  Future<void> limpiarUbicacionesSincronizadas() async {
+    final db = await database;
+    final result = await db.delete(
+      'ubicaciones',
+      where: 'sincronizado = ?',
+      whereArgs: [1],
+    );
+    print('DEBUG: 🗑️ Ubicaciones sincronizadas eliminadas: $result');
+  }
+
+// NUEVO: Método para verificar una ubicación específica
+  Future<UbicacionModel?> obtenerUbicacionPorId(int id) async {
+    final db = await database;
+    final results = await db.query(
+      'ubicaciones',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    return results.isNotEmpty ? UbicacionModel.fromJson(results.first) : null;
+  }
 }

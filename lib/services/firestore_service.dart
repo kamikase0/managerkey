@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:manager_key/models/ubicacion_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -113,4 +114,13 @@ class FirestoreService {
       return false;
     }
   }
+
+  Future<void> guardarUbicacion(UbicacionModel ubicacion) async {
+    try {
+      await _firestore.collection('ubicaciones').add(ubicacion.toJson());
+  }catch(e){
+      print('Error al guardar ubicación en Firestore: $e');
+      throw e;
+    }
+    }
 }

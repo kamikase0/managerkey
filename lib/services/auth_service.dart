@@ -32,6 +32,7 @@ class AuthService {
       final authResponse = AuthResponse.fromJson(data);
 
       await _saveAuthData(authResponse);
+
       return authResponse;
     } else {
       throw Exception('Error de autenticación: ${response.body}');
@@ -48,6 +49,7 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authKey);
     await prefs.remove(_userKey);
+    print('DEBUG: Servicio logout completado');
   }
 
   Future<bool> isAuthenticated() async {
@@ -65,24 +67,55 @@ class AuthService {
     return null;
   }
 
-  // =======================================================
-  // MÉTODO NUEVO: Añade esta función a tu servicio
-  // =======================================================
+  // CORREGIDO: Usar la propiedad idOperador del modelo Operador
+  Future<int?> getIdOperador() async {
+    final user = await getCurrentUser();
+    return user?.idOperador; // Esto usa el getter que ya existe en tu User model
+  }
+
+  // CORREGIDO: Método para obtener datos del operador
+  Future<Map<String, dynamic>?> getDatosOperador() async {
+    final user = await getCurrentUser();
+    if (user?.operador != null) {
+      final operador = user!.operador!;
+      return {
+        'id_operador': operador.idOperador,
+        'tipo_operador': operador.tipoOperador,
+        'id_estacion': operador.idEstacion,
+        'nro_estacion': operador.nroEstacion,
+        'ruta_id': operador.ruta.id,
+        'ruta_nombre': operador.ruta.nombre,
+      };
+    }
+    return null;
+  }
+
+  // NUEVO: Método para obtener la ruta del operador
+  Future<String?> getRutaOperador() async {
+    final datosOperador = await getDatosOperador();
+    return datosOperador?['ruta_nombre'];
+  }
+
+  // NUEVO: Método para obtener el ID de estación
+  Future<int?> getIdEstacion() async {
+    final datosOperador = await getDatosOperador();
+    return datosOperador?['id_estacion'];
+  }
+
   Future<String?> getAccessToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final authJson = prefs.getString(_authKey); // _authKey es 'auth_tokens'
+    final authJson = prefs.getString(_authKey);
 
     if (authJson != null) {
       try {
         final tokenMap = json.decode(authJson) as Map<String, dynamic>;
-        // La API devuelve 'access', el modelo usa 'accessToken'. Cubrimos ambos casos.
         return tokenMap['access'] ?? tokenMap['accessToken'];
       } catch (e) {
         print('Error al decodificar el token de acceso: $e');
         return null;
       }
     }
-    return null; // Retorna null si no se encuentra el token
+    return null;
   }
 
   Future<String?> getUserGroup() async {
@@ -100,14 +133,14 @@ class AuthService {
     return user?.tipoOperador;
   }
 
-  Future<int?> getIdOperador() async {
-    final user = await getCurrentUser();
-    return user?.idOperador;
-  }
-
   Future<bool> isOperadorRural() async {
     final user = await getCurrentUser();
     return user?.isOperadorRural ?? false;
+  }
+
+  Future<bool> isOperadorUrbano() async {
+    final user = await getCurrentUser();
+    return user?.isOperadorUrbano ?? false;
   }
 
   Future<bool> refreshToken() async {
@@ -115,14 +148,14 @@ class AuthService {
     final authJson = prefs.getString(_authKey);
 
     if (authJson == null) {
-      return false; // No hay tokens guardados
+      return false;
     }
 
     final tokenMap = json.decode(authJson) as Map<String, dynamic>;
     final refreshToken = tokenMap['refresh'] ?? tokenMap['refreshToken'];
 
     if (refreshToken == null) {
-      return false; // No hay refresh token
+      return false;
     }
 
     try {
@@ -134,19 +167,53 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final newTokens = json.decode(response.body);
-        // El nuevo access token se guarda, el refresh token se mantiene
         tokenMap['access'] = newTokens['access'];
         await prefs.setString(_authKey, json.encode(tokenMap));
         print('✅ Token de acceso refrescado exitosamente.');
         return true;
       } else {
         print('❌ Falló el refresco del token. Forzando logout.');
-        await logout(); // Si el refresh token también expira, limpiamos todo.
+        await logout();
         return false;
       }
     } catch (e) {
       print('❌ Error durante el refresco del token: $e');
       return false;
     }
+  }
+
+  String determinarTipoUsuario(User user) {
+    final group = user.primaryGroup?.toLowerCase() ?? '';
+
+    if (group.contains('coordinador') || group.contains('admin')) {
+      return 'coordinador';
+    } else if (group.contains('tecnico') || group.contains('soporte')) {
+      return 'tecnico';
+    } else {
+      return 'operador';
+    }
+  }
+
+  // NUEVO: Método para obtener información completa del usuario (útil para debug)
+  Future<Map<String, dynamic>> getUserInfo() async {
+    final user = await getCurrentUser();
+    final accessToken = await getAccessToken();
+    final idOperador = await getIdOperador();
+    final datosOperador = await getDatosOperador();
+
+    return {
+      'user': user != null ? {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'groups': user.groups,
+        'primaryGroup': user.primaryGroup,
+      } : null,
+      'hasToken': accessToken != null,
+      'idOperador': idOperador,
+      'datosOperador': datosOperador,
+      'isOperadorRural': user?.isOperadorRural ?? false,
+      'isOperadorUrbano': user?.isOperadorUrbano ?? false,
+    };
   }
 }

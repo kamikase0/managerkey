@@ -695,7 +695,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'REGISTROS RECEPCIÓN (R)',
+                                'REGISTROS NUEVOS',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
@@ -743,7 +743,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
                       const SizedBox(height: 20),
 
-                      // SECCIÓN COMBUSTIBLE (C)
+                      // SECCIÓN CAMBIO DE DOMICILIO(C)
                       Card(
                         elevation: 2,
                         child: Padding(
@@ -752,7 +752,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'REGISTROS COMBUSTIBLE (C)',
+                                'REGISTROS CAMBIO DE DOMICILIO',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
