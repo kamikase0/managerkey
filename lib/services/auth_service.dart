@@ -4,8 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/enviroment.dart';
 import '../models/auth_response.dart';
 import '../models/user_model.dart';
+import '../services/punto_empadronamiento_service.dart';
 
 class AuthService {
+  final PuntoEmpadronamientoService _puntoEmpadronamientoService = PuntoEmpadronamientoService();
+
   static final AuthService _instance = AuthService._internal();
 
   factory AuthService() => _instance;
@@ -33,9 +36,39 @@ class AuthService {
 
       await _saveAuthData(authResponse);
 
+      // ✅ NUEVO: Sincronizar puntos de empadronamiento después del login exitoso
+      await _sincronizarPuntosEmpadronamiento(authResponse.access);
+
       return authResponse;
     } else {
       throw Exception('Error de autenticación: ${response.body}');
+    }
+  }
+
+  // ✅ NUEVO: Método para sincronizar puntos de empadronamiento
+  Future<void> _sincronizarPuntosEmpadronamiento(String accessToken) async {
+    try {
+      print('🔄 Sincronizando puntos de empadronamiento...');
+      await _puntoEmpadronamientoService.syncPuntosEmpadronamiento(accessToken);
+      print('✅ Puntos de empadronamiento sincronizados exitosamente');
+    } catch (e) {
+      print('⚠️ Error sincronizando puntos de empadronamiento: $e');
+      // No relanzamos la excepción para no afectar el flujo de login
+    }
+  }
+
+  // ✅ NUEVO: Método público para forzar sincronización (útil para manual o después de logout/login)
+  Future<void> sincronizarPuntosEmpadronamiento() async {
+    try {
+      final token = await getAccessToken();
+      if (token != null) {
+        await _sincronizarPuntosEmpadronamiento(token);
+      } else {
+        print('❌ No hay token disponible para sincronizar puntos de empadronamiento');
+      }
+    } catch (e) {
+      print('❌ Error forzando sincronización: $e');
+      rethrow;
     }
   }
 

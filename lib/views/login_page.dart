@@ -54,6 +54,8 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      print('🔄 Iniciando proceso de login...');
+
       // Realizar login
       final authResponse = await AuthService().loginWithEmail(
         _emailController.text.trim(),
@@ -62,14 +64,22 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
+      print('✅ Login exitoso, guardando token...');
+
       // Guardar token en SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('access_token', authResponse.access);
 
+      // ✅ NUEVO: Esperar un momento para que la sincronización de puntos se complete
+      print('🔄 Esperando sincronización de puntos de empadronamiento...');
+      await Future.delayed(const Duration(seconds: 3));
+
       // Navegar al home
+      print('🚀 Navegando al Home...');
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const HomePageWrapper()),
       );
+
     } catch (e) {
       if (!mounted) return;
 

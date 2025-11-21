@@ -94,13 +94,13 @@ class _ConnectivityHandlerState extends State<ConnectivityHandler> {
     }
 
     // Mostrar pantalla de sin internet si no hay conexión
-    if (!_isConnected) {
-      print('🚫 Mostrando pantalla de sin internet');
-      return NoInternetScreen(
-        onRetry: _handleRetry,
-        customMessage: widget.customMessage,
-      );
-    }
+    // if (!_isConnected) {
+    //   print('🚫 Mostrando pantalla de sin internet');
+    //   return NoInternetScreen(
+    //     onRetry: _handleRetry,
+    //     customMessage: widget.customMessage,
+    //   );
+    // }
 
     // Si hay conexión, mostrar el contenido normal
     print('✅ Conexión establecida, mostrando contenido normal');
