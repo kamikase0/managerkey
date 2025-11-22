@@ -1,11 +1,12 @@
 // lib/services/punto_empadronamiento_service.dart (VERSIÓN CON MÁS LOGS)
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:manager_key/config/enviroment.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/punto_empadronamiento_model.dart';
 
 class PuntoEmpadronamientoService {
-  static const String _baseUrl = 'http://34.176.50.193:8000/api';
+  static const String _baseUrl = Enviroment.apiUrlDev;
   static const String _tableName = 'puntos_empadronamiento';
 
   // Obtener puntos de empadronamiento desde la API

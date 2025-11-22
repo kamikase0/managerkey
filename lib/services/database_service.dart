@@ -269,75 +269,6 @@ class DatabaseService {
 
   // ========== MÉTODOS PARA REGISTROS DE DESPLIEGUE ==========
 
-  Future<int> insertRegistroDespliegue(RegistroDespliegue registro) async {
-    try {
-      print('📝 Insertando registro: ${registro.toMap()}');
-      final db = await database;
-
-      final Map<String, dynamic> datosParaInsertar = {
-        'latitud': registro.latitud,
-        'longitud': registro.longitud,
-        'descripcionReporte': registro.descripcionReporte ?? '',
-        'estado': registro.estado,
-        'sincronizar': registro.sincronizar ? 1 : 0,
-        'observaciones': registro.observaciones ?? '',
-        'incidencias': registro.incidencias ?? '',
-        'fechaHora': registro.fechaHora,
-        'operadorId': registro.operadorId,
-        'sincronizado': registro.sincronizado ? 1 : 0,
-        'centroEmpadronamiento': registro.centroEmpadronamiento,
-        'fechaSincronizacion': registro.fechaSincronizacion,
-      };
-
-      print('📦 Datos con mapeo correcto: $datosParaInsertar');
-
-      final result = await db.insert(
-        'registros_despliegue',
-        datosParaInsertar,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-
-      print('✅ Registro insertado con ID: $result');
-      return result;
-    } catch (e) {
-      print('❌ Error al insertar registro: $e');
-      rethrow;
-    }
-  }
-
-  Future<int> actualizarRegistroDespliegue(RegistroDespliegue registro) async {
-    try {
-      final db = await database;
-      if (registro.id == null) {
-        throw Exception('El registro debe tener un ID para actualizarse');
-      }
-      final result = await db.update(
-        'registros_despliegue',
-        {
-          'latitud': registro.latitud,
-          'longitud': registro.longitud,
-          'descripcionReporte': registro.descripcionReporte ?? '',
-          'estado': registro.estado,
-          'sincronizar': registro.sincronizar ? 1 : 0,
-          'observaciones': registro.observaciones ?? '',
-          'incidencias': registro.incidencias ?? '',
-          'fechaHora': registro.fechaHora,
-          'operadorId': registro.operadorId,
-          'sincronizado': registro.sincronizado ? 1 : 0,
-          'centroEmpadronamiento': registro.centroEmpadronamiento,
-          'fechaSincronizacion': registro.fechaSincronizacion,
-        },
-        where: 'id = ?',
-        whereArgs: [registro.id],
-      );
-      print('✅ Registro actualizado: $result filas afectadas');
-      return result;
-    } catch (e) {
-      print('❌ Error al actualizar registro: $e');
-      rethrow;
-    }
-  }
-
   Future<List<RegistroDespliegue>> obtenerTodosRegistros() async {
     try {
       final db = await database;
@@ -666,6 +597,81 @@ class DatabaseService {
     } catch (e) {
       print('❌ Error al guardar puntos de empadronamiento: $e');
       rethrow;
+    }
+  }
+
+  // âœ… SECCIÓN CORREGIDA: MÃ©todo insertRegistroDespliegue
+  Future<int> insertRegistroDespliegue(RegistroDespliegue registro) async {
+    try {
+      print('ðŸ" Insertando registro: ${registro.toMap()}');
+      final db = await database;
+
+      // âœ… MAPEO CORRECTO CON CONVERSIONES NECESARIAS
+      final Map<String, dynamic> datosParaInsertar = {
+        'latitud': registro.latitud ?? '0',
+        'longitud': registro.longitud ?? '0',
+        'descripcionReporte':
+        registro.descripcionReporte ?? '', // âœ… CONVIERTE null A ""
+        'estado': registro.estado,
+        'sincronizar': registro.sincronizar ? 1 : 0,
+        'observaciones': registro.observaciones ?? '',
+        'incidencias': registro.incidencias ?? '',
+        'fechaHora': registro.fechaHora,
+        'operadorId': registro.operadorId,
+        'sincronizado': registro.sincronizado ? 1 : 0,
+        'centroEmpadronamiento': registro.centroEmpadronamiento,
+        'fechaSincronizacion': registro.fechaSincronizacion,
+      };
+
+      print('ðŸ"¦ Datos con mapeo correcto: $datosParaInsertar');
+
+      final result = await db.insert(
+        'registros_despliegue',
+        datosParaInsertar,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      print('âœ… Registro insertado con ID: $result');
+      return result;
+    } catch (e) {
+      print('âŒ Error al insertar registro: $e');
+      print('ðŸ" Tipo de error: ${e.runtimeType}');
+      // âœ… NO relanzar para que no rompa la app
+      return -1;
+    }
+  }
+
+// âœ… TAMBIÉN CORREGIR: MÃ©todo actualizarRegistroDespliegue
+  Future<int> actualizarRegistroDespliegue(RegistroDespliegue registro) async {
+    try {
+      final db = await database;
+      if (registro.id == null) {
+        throw Exception('El registro debe tener un ID para actualizarse');
+      }
+      final result = await db.update(
+        'registros_despliegue',
+        {
+          'latitud': registro.latitud ?? '0',
+          'longitud': registro.longitud ?? '0',
+          'descripcionReporte': registro.descripcionReporte ?? '',
+          'estado': registro.estado,
+          'sincronizar': registro.sincronizar ? 1 : 0,
+          'observaciones': registro.observaciones ?? '',
+          'incidencias': registro.incidencias ?? '',
+          'fechaHora': registro.fechaHora,
+          'operadorId': registro.operadorId,
+          'sincronizado': registro.sincronizado ? 1 : 0,
+          'centroEmpadronamiento': registro.centroEmpadronamiento,
+          'fechaSincronizacion': registro.fechaSincronizacion,
+        },
+        where: 'id = ?',
+        whereArgs: [registro.id],
+      );
+      print('âœ… Registro actualizado: $result filas afectadas');
+      return result;
+    } catch (e) {
+      print('âŒ Error al actualizar registro: $e');
+      return -1;
     }
   }
 }

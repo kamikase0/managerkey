@@ -35,7 +35,7 @@ class ApiService {
     }
   }
 
-  static final String _baseUrl = Enviroment.apiUrl;
+  static final String _baseUrl = Enviroment.apiUrlDev;
   static final String _registrosEndpoint = 'registrosdespliegue/';
   static final String _reportesEndpoint = 'reportesdiarios/';
 
@@ -381,7 +381,6 @@ class ApiService {
 
   /// =============================
   /// 📥 Obtener todos los registros de despliegue del servidor - CORREGIDO
-  /// GET http://34.176.50.193:8001/api/registrosdespliegue/
   /// =============================
   Future<List<Map<String, dynamic>>> obtenerRegistrosDespliegue() async {
     try {
@@ -391,7 +390,7 @@ class ApiService {
       }
 
       final url = Uri.parse(
-        'http://34.176.50.193:8001/api/registrosdespliegue/',
+        '$_baseUrl/registrosdespliegue/',
       );
 
       print('📡 GET $url');
@@ -453,7 +452,6 @@ class ApiService {
 
   /// =============================
   /// 📥 Obtener registros de despliegue de un operador específico - CORREGIDO
-  /// GET http://34.176.50.193:8001/api/registrosdespliegue/?operador=ID
   /// =============================
   Future<List<Map<String, dynamic>>> obtenerRegistrosDespliegueDelOperador(
       int idOperador,
@@ -465,7 +463,7 @@ class ApiService {
       }
 
       final url = Uri.parse(
-        'http://34.176.50.193:8001/api/registrosdespliegue/?operador=$idOperador',
+        '$_baseUrl/registrosdespliegue/?operador=$idOperador',
       );
 
       print('📡 GET $url');
@@ -534,7 +532,7 @@ class ApiService {
       }
 
       final response = await http.get(
-        Uri.parse('http://34.176.50.193:8001/api/ultimo-registro-despliegue/$operadorId'),
+        Uri.parse('$_baseUrl/ultimo-registro-despliegue/$operadorId'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

@@ -47,10 +47,10 @@ class _NoInternetScreenState extends State<NoInternetScreen> with SingleTickerPr
   }
 
   void _copyServerUrl() {
-    Clipboard.setData(ClipboardData(text: Enviroment.apiUrl));
+    Clipboard.setData(ClipboardData(text: Enviroment.apiUrlDev));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('URL del servidor copiada: ${Enviroment.apiUrl}'),
+        content: Text('URL del servidor copiada: ${Enviroment.apiUrlDev}'),
         behavior: SnackBarBehavior.floating,
         backgroundColor: Colors.green,
       ),
@@ -161,7 +161,7 @@ class _NoInternetScreenState extends State<NoInternetScreen> with SingleTickerPr
                         children: [
                           Expanded(
                             child: Text(
-                              Enviroment.apiUrl,
+                              Enviroment.apiUrlDev,
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: isDark ? Colors.grey[300] : Colors.grey[700],
                                 fontFamily: 'Monospace',

@@ -1,6 +1,7 @@
 // lib/services/salida_llegada_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:manager_key/config/enviroment.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/registro_despliegue_model.dart';
 import 'database_service.dart';
@@ -522,7 +523,7 @@ class SalidaLlegadaService {
       }
 
       // ✅ CORREGIDO: Usar el endpoint correcto de registrosdespliegue
-      final url = 'http://34.176.50.193:8000/api/registrosdespliegue/';
+      final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
 
       print('📤 Enviando a: $url');
       print('📦 Datos: $datos');

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import '../../config/enviroment.dart';
 import '../../services/location_service.dart';
 import '../../services/database_service.dart';
 import '../../services/api_service.dart';
@@ -386,190 +387,7 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     );
   }
 
-  // ✅ OPCIÓN 1: Si tu tabla solo tiene estos campos
-  Future<void> _registrarLlegada() async {
-    // ✅ VERIFICAR: Centro de empadronamiento seleccionado
-    if (_puntoEmpadronamientoIdSeleccionado == null ||
-        _puntoEmpadronamientoIdSeleccionado == 0) {
-      _mostrarSnack('Error: Debe seleccionar un punto de empadronamiento',
-          error: true);
-      return;
-    }
 
-    // ✅ VERIFICAR: Provincia seleccionada
-    if (_provinciaSeleccionada == null || _provinciaSeleccionada!.isEmpty) {
-      _mostrarSnack('Error: Debe seleccionar una provincia', error: true);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      // Obtener ubicación actual (si GPS está activado)
-      String? latitudFinal = _latitud;
-      String? longitudFinal = _longitud;
-
-      if (_gpsActivado && !_locationCaptured) {
-        final location = await LocationService().getCurrentLocation();
-        if (location != null) {
-          latitudFinal = location.latitude.toString();
-          longitudFinal = location.longitude.toString();
-          setState(() {
-            _coordenadas =
-            'Lat: ${location.latitude.toStringAsFixed(6)}\nLong: ${location.longitude.toStringAsFixed(6)}';
-          });
-        }
-      }
-
-      final ahora = DateTime.now();
-
-      print('═══════════════════════════════════════════════════════════');
-      print('📋 REGISTRO DE LLEGADA PARA ENVIAR:');
-      print('═══════════════════════════════════════════════════════════');
-      print('🏢 Centro Empadronamiento ID: $_puntoEmpadronamientoIdSeleccionado');
-      print('📍 Provincia Seleccionada: $_provinciaSeleccionada');
-      print('📌 Punto Empadronamiento: $_puntoEmpadronamientoSeleccionado');
-      print('📡 Operador ID: ${widget.idOperador}');
-      print('🕐 Fecha/Hora: ${ahora.toIso8601String()}');
-      print('📝 Observaciones: ${_observacionesController.text}');
-      print('📍 Latitud: $latitudFinal');
-      print('📍 Longitud: $longitudFinal');
-      print('═══════════════════════════════════════════════════════════');
-
-      // ✅ CREAR OBJETO RegistroDespliegue PARA BD LOCAL
-      final nuevoRegistroLlegada = RegistroDespliegue(
-        latitud: latitudFinal ?? '',
-        longitud: longitudFinal ?? '',
-        descripcionReporte: '',
-        estado: 'LLEGADA',
-        sincronizar: _sincronizarConServidor,
-        observaciones: _observacionesController.text.isNotEmpty
-            ? _observacionesController.text
-            : 'Sin observaciones',
-        incidencias: '',
-        fechaHora: ahora.toIso8601String(),
-        operadorId: widget.idOperador,
-        sincronizado: false,
-        centroEmpadronamiento: _puntoEmpadronamientoIdSeleccionado,
-      );
-
-      print('📦 Objeto RegistroDespliegue creado correctamente');
-
-      // ✅ PREPARAR JSON PARA API (EXACTAMENTE COMO EL EJEMPLO)
-      final Map<String, dynamic> jsonParaAPI = {
-        'centro_empadronamiento': _puntoEmpadronamientoIdSeleccionado,
-        'latitud': latitudFinal ?? 0,
-        'longitud': longitudFinal ?? 0,
-        'descripcion_reporte': null,
-        'estado': 'TRANSMITIDO',
-        'sincronizar': true,
-        'observaciones': _observacionesController.text.isNotEmpty
-            ? _observacionesController.text
-            : '',
-        'incidencias': '',
-        'fecha_hora': ahora.toIso8601String(),
-        'operador': widget.idOperador,
-      };
-
-      print('📤 JSON para API: $jsonParaAPI');
-
-      // ✅ GUARDAR LOCALMENTE PRIMERO (siempre)
-      final nuevoId = await _databaseService.insertRegistroDespliegue(nuevoRegistroLlegada);
-      print('✅ Nuevo registro de llegada guardado localmente con ID: $nuevoId');
-
-      // ✅ VERIFICAR CONECTIVIDAD Y SINCRONIZAR
-      final tieneInternet = await SyncService().verificarConexion();
-      print('🌐 ¿Tiene internet?: $tieneInternet');
-
-      if (tieneInternet && _sincronizarConServidor) {
-        // ✅ CASO 1: CON INTERNET - ENVIAR INMEDIATAMENTE AL SERVIDOR
-        print('📡 Intentando enviar al servidor...');
-
-        final accessToken = await _authService.getAccessToken();
-        if (accessToken == null || accessToken.isEmpty) {
-          _mostrarSnack('No se pudo obtener el token de autenticación',
-              error: true);
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        final enviado = await _enviarRegistroAlServidor(jsonParaAPI, accessToken);
-
-        if (enviado) {
-          // ✅ Eliminar del local después de sincronizar exitosamente
-          await _databaseService.eliminarRegistroDespliegue(nuevoId);
-          print('🗑️ Registro eliminado localmente después de sincronización exitosa');
-          _mostrarSnack('✅ Llegada registrada y sincronizada correctamente');
-        } else {
-          print(
-              '⚠️ Error al enviar. Registro se mantiene localmente para sincronizar después');
-          _mostrarSnack(
-              '⚠️ Error al enviar. Se guardó localmente y se sincronizará después');
-        }
-      } else if (!tieneInternet) {
-        // ✅ CASO 2: SIN INTERNET - GUARDAR SOLO LOCALMENTE
-        print('📡 Sin conexión. Registro guardado localmente para sincronizar después');
-        _mostrarSnack(
-            '📡 Sin conexión. Se guardó localmente y se sincronizará cuando haya internet');
-      } else {
-        // ✅ CASO 3: USUARIO NO QUIERE SINCRONIZAR INMEDIATAMENTE
-        print('💾 Sincronización manual desactivada. Registro guardado localmente');
-        _mostrarSnack('✅ Llegada registrada localmente');
-      }
-
-      _observacionesController.clear();
-
-      // Recargar después de completar
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          _cargarUltimoRegistroActivo();
-        }
-      });
-    } catch (e) {
-      print('❌ Error al registrar llegada: $e');
-      print('🔍 Stack trace: ${StackTrace.current}');
-      _mostrarSnack('Error al registrar llegada: ${e.toString()}', error: true);
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  /// ✅ NUEVO MÉTODO: Enviar registro al servidor con POST
-  Future<bool> _enviarRegistroAlServidor(
-      Map<String, dynamic> jsonData, String accessToken) async {
-    try {
-      const url = 'http://34.176.50.193:8000/api/registrosdespliegue/';
-
-      print('📡 URL: $url');
-      print('🔑 Token: ${accessToken.substring(0, 20)}...');
-      print('📦 Datos: $jsonData');
-
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode(jsonData),
-      ).timeout(const Duration(seconds: 30));
-
-      print('📥 Status Code: ${response.statusCode}');
-      print('📥 Response: ${response.body}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Registro enviado exitosamente al servidor');
-        return true;
-      } else {
-        print('❌ Error del servidor: ${response.statusCode}');
-        print('📄 Response body: ${response.body}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ Error de conexión al enviar: $e');
-      return false;
-    }
-  }
 
   /// ✅ NUEVO MÉTODO: Sincronizar registros locales pendientes
   Future<void> _sincronizarRegistrosPendientes() async {
@@ -1066,5 +884,199 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
   void dispose() {
     _observacionesController.dispose();
     super.dispose();
+  }
+
+  // âœ… SECCIÓN CORREGIDA: MÃ©todo _registrarLlegada - LÍNEA ~531
+  Future<void> _registrarLlegada() async {
+    // âœ… VERIFICAR: Centro de empadronamiento seleccionado
+    if (_puntoEmpadronamientoIdSeleccionado == null ||
+        _puntoEmpadronamientoIdSeleccionado == 0) {
+      _mostrarSnack('Error: Debe seleccionar un punto de empadronamiento',
+          error: true);
+      return;
+    }
+
+    // âœ… VERIFICAR: Provincia seleccionada
+    if (_provinciaSeleccionada == null || _provinciaSeleccionada!.isEmpty) {
+      _mostrarSnack('Error: Debe seleccionar una provincia', error: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Obtener ubicaciÃ³n actual (si GPS estÃ¡ activado)
+      String? latitudFinal = _latitud;
+      String? longitudFinal = _longitud;
+
+      if (_gpsActivado && !_locationCaptured) {
+        final location = await LocationService().getCurrentLocation();
+        if (location != null) {
+          latitudFinal = location.latitude.toString();
+          longitudFinal = location.longitude.toString();
+          setState(() {
+            _coordenadas =
+            'Lat: ${location.latitude.toStringAsFixed(6)}\nLong: ${location.longitude.toStringAsFixed(6)}';
+          });
+        }
+      }
+
+      final ahora = DateTime.now().toLocal();
+
+      final fechaFormato = ahora.toIso8601String();
+      final fechaSinZ = fechaFormato.replaceAll('Z', '');
+
+      print('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+      print(' REGISTRO DE LLEGADA PARA ENVIAR:');
+      print('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+      print('Centro Empadronamiento ID: $_puntoEmpadronamientoIdSeleccionado');
+      print('Provincia Seleccionada: $_provinciaSeleccionada');
+      print(' Punto Empadronamiento: $_puntoEmpadronamientoSeleccionado');
+      print(' Operador ID: ${widget.idOperador}');
+      print('Fecha/Hora: ${ahora.toIso8601String()}');
+      print('Observaciones: ${_observacionesController.text}');
+      print('Latitud: $latitudFinal');
+      print('Longitud: $longitudFinal');
+      print('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+
+      // âœ… CREAR OBJETO RegistroDespliegue PARA BD LOCAL
+      // âš ï¸ IMPORTANTE: Asegurar que TODOS los campos sean válidos
+      final nuevoRegistroLlegada = RegistroDespliegue(
+        id: null,  // âœ… SQLite genera el ID automáticamente
+        latitud: latitudFinal ?? '0',
+        longitud: longitudFinal ?? '0',
+        descripcionReporte: null,  // âœ… DEBE SER null O STRING, no vacío si es nullable
+        estado: 'LLEGADA',
+        sincronizar: _sincronizarConServidor,
+        observaciones: _observacionesController.text.isNotEmpty
+            ? _observacionesController.text
+            : 'Sin observaciones',
+        incidencias: '',
+        fechaHora: fechaSinZ,
+        operadorId: widget.idOperador,
+        sincronizado: false,
+        centroEmpadronamiento: _puntoEmpadronamientoIdSeleccionado,
+        fechaSincronizacion: null,  // âœ… Agregar este campo
+      );
+
+      print(' Objeto RegistroDespliegue creado correctamente');
+
+      // âœ… PREPARAR JSON PARA API
+      final Map<String, dynamic> jsonParaAPI = {
+        'centro_empadronamiento': _puntoEmpadronamientoIdSeleccionado,
+        'latitud': double.tryParse(latitudFinal ?? '0') ?? 0,
+        'longitud': double.tryParse(longitudFinal ?? '0') ?? 0,
+        'descripcion_reporte': null,
+        'estado': 'LLEGADA',
+        'sincronizar': true,
+        'observaciones': _observacionesController.text.isNotEmpty
+            ? _observacionesController.text
+            : '',
+        'incidencias': '',
+        'fecha_hora': fechaSinZ,
+        'operador': widget.idOperador,
+      };
+
+      print(' JSON para API: $jsonParaAPI');
+
+      // âœ… GUARDAR LOCALMENTE PRIMERO (siempre)
+      final nuevoId =
+      await _databaseService.insertRegistroDespliegue(nuevoRegistroLlegada);
+      print('âœ… Nuevo registro de llegada guardado localmente con ID: $nuevoId');
+
+      // âœ… VERIFICAR CONECTIVIDAD Y SINCRONIZAR
+      final tieneInternet = await SyncService().verificarConexion();
+      print('Â¿Tiene internet?: $tieneInternet');
+
+      if (tieneInternet && _sincronizarConServidor) {
+        // âœ… CASO 1: CON INTERNET - ENVIAR INMEDIATAMENTE AL SERVIDOR
+        print(' Intentando enviar al servidor...');
+
+        final accessToken = await _authService.getAccessToken();
+        if (accessToken == null || accessToken.isEmpty) {
+          _mostrarSnack('No se pudo obtener el token de autenticaciÃ³n',
+              error: true);
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        final enviado =
+        await _enviarRegistroAlServidor(jsonParaAPI, accessToken);
+
+        if (enviado) {
+          // âœ… Eliminar del local despuÃ©s de sincronizar exitosamente
+          await _databaseService.eliminarRegistroDespliegue(nuevoId);
+          print(
+              'ï¸ Registro eliminado localmente despuÃ©s de sincronizaciÃ³n exitosa');
+              _mostrarSnack('âœ… Llegada registrada y sincronizada correctamente');
+        } else {
+          print(
+              'âš ï¸ Error al enviar. Registro se mantiene localmente para sincronizar despuÃ©s');
+          _mostrarSnack(
+              'âš ï¸ Error al enviar. Se guardÃ³ localmente y se sincronizarÃ¡ despuÃ©s');
+        }
+      } else if (!tieneInternet) {
+        // âœ… CASO 2: SIN INTERNET - GUARDAR SOLO LOCALMENTE
+        print(' Sin conexiÃ³n. Registro guardado localmente para sincronizar despuÃ©s');
+        _mostrarSnack(
+            ' Sin conexiÃ³n. Se guardÃ³ localmente y se sincronizarÃ¡ cuando haya internet');
+      } else {
+        // âœ… CASO 3: USUARIO NO QUIERE SINCRONIZAR INMEDIATAMENTE
+        print('ð¾ SincronizaciÃ³n manual desactivada. Registro guardado localmente');
+            _mostrarSnack('âœ… Llegada registrada localmente');
+      }
+
+      _observacionesController.clear();
+
+      // Recargar despuÃ©s de completar
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          _cargarUltimoRegistroActivo();
+        }
+      });
+    } catch (e) {
+      print('âŒ Error al registrar llegada: $e');
+      print('Stack trace: ${StackTrace.current}');
+      _mostrarSnack('Error al registrar llegada: ${e.toString()}', error: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// âœ… NUEVO MÃ‰TODO: Enviar registro al servidor con POST
+  Future<bool> _enviarRegistroAlServidor(
+      Map<String, dynamic> jsonData, String accessToken) async {
+    try {
+      const url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
+
+      print(' URL: $url');
+      print(' Token: ${accessToken.substring(0, 20)}...');
+      print(' Datos: $jsonData');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode(jsonData),
+      ).timeout(const Duration(seconds: 30));
+
+      print(' Status Code: ${response.statusCode}');
+      print(' Response: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('âœ… Registro enviado exitosamente al servidor');
+        return true;
+      } else {
+        print('âŒ Error del servidor: ${response.statusCode}');
+        print(' Response body: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('âŒ Error de conexiÃ³n al enviar: $e');
+      return false;
+    }
   }
 }

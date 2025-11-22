@@ -22,7 +22,7 @@ class UbicacionService {
   int? _currentIdOperador; // CAMBIADO: Ahora guardamos el id_operador
   String? _currentUserType;
 
-  static const String _apiUrl = '${Enviroment.apiUrlGeo}ubicaciones-operador/';
+  static const String _apiUrl = '${Enviroment.apiUrlDev}/ubicaciones-operador/';
 
   void initialize({
     required LocationService locationService,
@@ -57,7 +57,7 @@ class UbicacionService {
     _registrarUbicacion(accessToken);
 
     // Programar registro cada minutos
-    _timer = Timer.periodic(const Duration(minutes: 15), (timer) {
+    _timer = Timer.periodic(const Duration(minutes: 2), (timer) {
       print('DEBUG: ⏰ TIMER EJECUTADO - Registrando ubicación automática');
       _registrarUbicacion(accessToken);
     });

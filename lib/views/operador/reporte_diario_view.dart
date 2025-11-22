@@ -1,4 +1,4 @@
-// lib/views/operador/reporte_diario_view.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:manager_key/services/punto_empadronamiento_service.dart';
@@ -444,46 +444,41 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-  // ✅ MÉTODO ACTUALIZADO: Limpiar formulario
-  void _cleanFormulario() {
-    setState(() {
-      _rInicialiController.clear();
-      _rFinalController.clear();
-      _cInicialiController.clear();
-      _cFinalController.clear();
-      _observacionesController.clear();
-      _incidenciasController.clear();
-      _cTotal.clear();
-      _rTotal.clear();
+    // ✅ NUEVO: Widget para campos de empadronamiento - SOLO DROPDOWNS
+  // ✅ REEMPLAZAR ESTA FUNCIÓN en reporte_diario_view.dart
 
-      // Limpiar también los dígitos finales
-      _rInicialDigitoFinalController.text = '';
-      _rFinalDigitoFinalController.text = '';
-      _cInicialDigitoFinalController.text = '';
-      _cFinalDigitoFinalController.text = '';
+// âœ… NUEVO: Widget para campos de empadronamiento - SOLO DROPDOWNS
+  Widget _buildCamposEmpadronamiento() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'UBICACIÓN DE EMPADRONAMIENTO',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.purple,
+              ),
+            ),
+            const SizedBox(height: 16),
 
-      // Limpiar campos de empadronamiento
-      _provinciaSeleccionada = null;
-      _puntoEmpadronamientoSeleccionado = null;
-      _puntoEmpadronamientoId = null;
+            // ✅ Dropdown de Provincia/Municipio
+            _buildProvinciaDropdown(),
 
-      _fechaController.text = DateTime.now().toString().split('.')[0];
-      diferenciaC = 0;
-      diferenciaR = 0;
-    });
+            const SizedBox(height: 12),
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Formulario limpiado'),
-          backgroundColor: Colors.blueGrey,
-          duration: Duration(seconds: 2),
+            // ✅ Dropdown de Punto de Empadronamiento
+            _buildPuntoEmpadronamientoDropdown(),
+          ],
         ),
-      );
-    }
+      ),
+    );
   }
 
-  // WIDGET PARA CAMPO CON FORMATO COMPLETO
   Widget _buildCampoConFormatoCompleto({
     required String label,
     required TextEditingController controller4Digitos,
@@ -766,310 +761,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   //   );
   // }
 
-  // ✅ NUEVO: Método para cuando se selecciona una provincia
-  void _onProvinciaSeleccionada(String? provincia) async {
-    if (provincia == null) return;
 
-    setState(() {
-      _provinciaSeleccionada = provincia;
-      _puntoEmpadronamientoSeleccionado = null;
-      _puntosEmpadronamiento = [];
-      _puntoEmpadronamientoId = null;
-    });
 
-    try {
-      // Cargar puntos de empadronamiento para la provincia seleccionada
-      final puntos = await _puntoService.getPuntosByProvincia(provincia);
-      final nombresPuntos = puntos.map((p) => p.puntoEmpadronamiento).toList();
 
-      setState(() {
-        _puntosEmpadronamiento = nombresPuntos;
-      });
 
-      print('✅ Puntos de empadronamiento cargados: ${puntos.length} para $provincia');
-    } catch (e) {
-      print('❌ Error cargando puntos de empadronamiento: $e');
-    }
-  }
 
-  // ✅ NUEVO: Método para cuando se selecciona un punto de empadronamiento
-  void _onPuntoEmpadronamientoSeleccionado(String? punto) async {
-    if (punto == null) return;
 
-    setState(() {
-      _puntoEmpadronamientoSeleccionado = punto;
-    });
 
-    try {
-      // Obtener el ID del punto seleccionado
-      final puntos = await _puntoService.getPuntosByProvincia(_provinciaSeleccionada!);
-      final puntoSeleccionado = puntos.firstWhere(
-            (p) => p.puntoEmpadronamiento == punto,
-        orElse: () => PuntoEmpadronamiento(
-          id: 0,
-          provincia: '',
-          puntoEmpadronamiento: '',
-        ),
-      );
-
-      if (puntoSeleccionado.id != 0) {
-        setState(() {
-          _puntoEmpadronamientoId = puntoSeleccionado.id;
-        });
-        print('✅ Punto de empadronamiento seleccionado: ID ${_puntoEmpadronamientoId} - $punto');
-      }
-    } catch (e) {
-      print('❌ Error obteniendo ID del punto de empadronamiento: $e');
-    }
-  }
-
-  Widget _buildCamposEmpadronamiento() {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'UBICACIÓN DE EMPADRONAMIENTO',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.purple,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Provincia con Autocomplete
-            _buildProvinciaAutocomplete(),
-
-            const SizedBox(height: 12),
-
-            // Punto de Empadronamiento con Autocomplete
-            _buildPuntoEmpadronamientoAutocomplete(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProvinciaAutocomplete() {
-    return Autocomplete<String>(
-      optionsBuilder: (TextEditingValue textEditingValue) {
-        if (textEditingValue.text.isEmpty) {
-          return _provincias;
-        }
-        return _provincias.where((String option) {
-          return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-        });
-      },
-      onSelected: (String selection) {
-        setState(() {
-          _provinciaSeleccionada = selection;
-        });
-        _onProvinciaSeleccionada(selection);
-      },
-      fieldViewBuilder: (
-          BuildContext context,
-          TextEditingController textEditingController,
-          FocusNode focusNode,
-          VoidCallback onFieldSubmitted,
-          ) {
-        // Sincronizar el controlador con el valor seleccionado
-        if (_provinciaSeleccionada != null && textEditingController.text.isEmpty) {
-          textEditingController.text = _provinciaSeleccionada!;
-        }
-
-        return TextFormField(
-          controller: textEditingController,
-          focusNode: focusNode,
-          decoration: InputDecoration(
-            labelText: 'Provincia/Municipio',
-            hintText: 'Escriba para buscar...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            suffixIcon: _provinciaSeleccionada != null
-                ? IconButton(
-              icon: const Icon(Icons.clear, size: 20),
-              onPressed: () {
-                textEditingController.clear();
-                setState(() {
-                  _provinciaSeleccionada = null;
-                  _puntoEmpadronamientoSeleccionado = null;
-                  _puntosEmpadronamiento = [];
-                });
-              },
-            )
-                : null,
-          ),
-          validator: (value) {
-            if (value == null || value.isEmpty || _provinciaSeleccionada == null) {
-              return 'Seleccione una provincia';
-            }
-            return null;
-          },
-          onChanged: (value) {
-            // Si el usuario borra el texto, limpiar la selección
-            if (value.isEmpty) {
-              setState(() {
-                _provinciaSeleccionada = null;
-                _puntoEmpadronamientoSeleccionado = null;
-                _puntosEmpadronamiento = [];
-              });
-            }
-          },
-        );
-      },
-      optionsViewBuilder: (
-          BuildContext context,
-          AutocompleteOnSelected<String> onSelected,
-          Iterable<String> options,
-          ) {
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 4.0,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final String option = options.elementAt(index);
-                  return ListTile(
-                    title: Text(
-                      option,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () {
-                      onSelected(option);
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPuntoEmpadronamientoAutocomplete() {
-    return Autocomplete<String>(
-      optionsBuilder: (TextEditingValue textEditingValue) {
-        if (textEditingValue.text.isEmpty) {
-          return _puntosEmpadronamiento;
-        }
-        return _puntosEmpadronamiento.where((String option) {
-          return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-        });
-      },
-      onSelected: (String selection) {
-        setState(() {
-          _puntoEmpadronamientoSeleccionado = selection;
-        });
-        _onPuntoEmpadronamientoSeleccionado(selection);
-      },
-      fieldViewBuilder: (
-          BuildContext context,
-          TextEditingController textEditingController,
-          FocusNode focusNode,
-          VoidCallback onFieldSubmitted,
-          ) {
-        // Sincronizar el controlador con el valor seleccionado
-        if (_puntoEmpadronamientoSeleccionado != null && textEditingController.text.isEmpty) {
-          textEditingController.text = _puntoEmpadronamientoSeleccionado!;
-        }
-
-        return TextFormField(
-          controller: textEditingController,
-          focusNode: focusNode,
-          enabled: _provinciaSeleccionada != null, // Solo habilitar si hay provincia seleccionada
-          decoration: InputDecoration(
-            labelText: 'Punto de Empadronamiento',
-            hintText: _provinciaSeleccionada != null
-                ? 'Escriba para buscar...'
-                : 'Primero seleccione una provincia',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            suffixIcon: _puntoEmpadronamientoSeleccionado != null
-                ? IconButton(
-              icon: const Icon(Icons.clear, size: 20),
-              onPressed: () {
-                textEditingController.clear();
-                setState(() {
-                  _puntoEmpadronamientoSeleccionado = null;
-                  _puntoEmpadronamientoId = null;
-                });
-              },
-            )
-                : null,
-          ),
-          validator: (value) {
-            if (_provinciaSeleccionada != null &&
-                (value == null || value.isEmpty || _puntoEmpadronamientoSeleccionado == null)) {
-              return 'Seleccione un punto de empadronamiento';
-            }
-            return null;
-          },
-          onChanged: (value) {
-            // Si el usuario borra el texto, limpiar la selección
-            if (value.isEmpty) {
-              setState(() {
-                _puntoEmpadronamientoSeleccionado = null;
-                _puntoEmpadronamientoId = null;
-              });
-            }
-          },
-        );
-      },
-      optionsViewBuilder: (
-          BuildContext context,
-          AutocompleteOnSelected<String> onSelected,
-          Iterable<String> options,
-          ) {
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 4.0,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final String option = options.elementAt(index);
-                  return ListTile(
-                    title: Text(
-                      option,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
-                    ),
-                    onTap: () {
-                      onSelected(option);
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1653,12 +1351,185 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     );
   }
 
-  // ✅ CORREGIDO: Método para cargar datos de empadronamiento
+  // ✅ REEMPLAZAR TODOS los métodos relacionados con empadronamiento por estos:
+
+
+
+// ✅ NUEVO: Widget Dropdown para Provincia
+  Widget _buildProvinciaDropdown() {
+    return DropdownButtonFormField<String>(
+      value: _provinciaSeleccionada,
+      decoration: InputDecoration(
+        labelText: 'Provincia/Municipio *',
+        hintText: 'Seleccione una provincia',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        prefixIcon: const Icon(Icons.location_city),
+      ),
+      isExpanded: true,
+      items: _provincias.map((String provincia) {
+        return DropdownMenuItem<String>(
+          value: provincia,
+          child: Text(
+            provincia,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: (String? nuevaProvincia) {
+        _onProvinciaSeleccionada(nuevaProvincia);
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Seleccione una provincia';
+        }
+        return null;
+      },
+    );
+  }
+
+// ✅ NUEVO: Widget Dropdown para Punto de Empadronamiento
+  Widget _buildPuntoEmpadronamientoDropdown() {
+    return DropdownButtonFormField<String>(
+      value: _puntoEmpadronamientoSeleccionado,
+      decoration: InputDecoration(
+        labelText: 'Punto de Empadronamiento *',
+        hintText: _provinciaSeleccionada != null
+            ? (_puntosEmpadronamiento.isEmpty
+            ? 'Cargando puntos...'
+            : 'Seleccione un punto')
+            : 'Primero seleccione una provincia',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        prefixIcon: const Icon(Icons.place),
+      ),
+      isExpanded: true,
+      items: _puntosEmpadronamiento.map((String punto) {
+        return DropdownMenuItem<String>(
+          value: punto,
+          child: Text(
+            punto,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+          ),
+        );
+      }).toList(),
+      onChanged: (_provinciaSeleccionada != null &&
+          _puntosEmpadronamiento.isNotEmpty)
+          ? (String? nuevoPunto) {
+        _onPuntoEmpadronamientoSeleccionado(nuevoPunto);
+      }
+          : null,
+      validator: (value) {
+        if (_provinciaSeleccionada != null &&
+            (value == null || value.isEmpty)) {
+          return 'Seleccione un punto de empadronamiento';
+        }
+        return null;
+      },
+    );
+  }
+
+// ✅ MÉTODO: Cuando se selecciona una provincia
+  void _onProvinciaSeleccionada(String? provincia) async {
+    if (provincia == null) return;
+
+    setState(() {
+      _provinciaSeleccionada = provincia;
+      _puntoEmpadronamientoSeleccionado = null;
+      _puntosEmpadronamiento = [];
+      _puntoEmpadronamientoId = null;
+    });
+
+    try {
+      print('📍 Cargando puntos para provincia: $provincia');
+
+      // Cargar puntos de empadronamiento para la provincia seleccionada
+      final puntos = await _puntoService.getPuntosByProvincia(provincia);
+      final nombresPuntos = puntos.map((p) => p.puntoEmpadronamiento).toList();
+
+      setState(() {
+        _puntosEmpadronamiento = nombresPuntos;
+      });
+
+      print('✅ Puntos de empadronamiento cargados: ${puntos.length}');
+      print('📌 Puntos: $nombresPuntos');
+    } catch (e) {
+      print('❌ Error cargando puntos de empadronamiento: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar puntos: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+// ✅ MÉTODO: Cuando se selecciona un punto de empadronamiento
+  void _onPuntoEmpadronamientoSeleccionado(String? punto) async {
+    if (punto == null) return;
+
+    setState(() {
+      _puntoEmpadronamientoSeleccionado = punto;
+    });
+
+    try {
+      print('📍 Buscando ID para punto: $punto');
+
+      // Obtener el ID del punto seleccionado
+      final puntos = await _puntoService.getPuntosByProvincia(_provinciaSeleccionada!);
+      final puntoSeleccionado = puntos.firstWhere(
+            (p) => p.puntoEmpadronamiento == punto,
+        orElse: () => PuntoEmpadronamiento(
+          id: 0,
+          provincia: '',
+          puntoEmpadronamiento: '',
+        ),
+      );
+
+      if (puntoSeleccionado.id != 0) {
+        setState(() {
+          _puntoEmpadronamientoId = puntoSeleccionado.id;
+        });
+        print('✅ Punto de empadronamiento seleccionado:');
+        print('   - ID: $_puntoEmpadronamientoId');
+        print('   - Nombre: $punto');
+      } else {
+        print('❌ No se encontró el ID para el punto: $punto');
+      }
+    } catch (e) {
+      print('❌ Error obteniendo ID del punto de empadronamiento: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar punto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+// ✅ MÉTODO: Cargar datos de empadronamiento al iniciar
   Future<void> _cargarDatosEmpadronamiento() async {
     try {
       setState(() {
         _cargadoProvincias = false;
       });
+
+      print('📍 Cargando provincias...');
       final provincias = await _puntoService.getProvinciasFromLocalDatabase();
 
       setState(() {
@@ -1667,11 +1538,61 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       });
 
       print('✅ Provincias cargadas: ${_provincias.length}');
+      print('📌 Provincias: $_provincias');
     } catch (e) {
       print('❌ Error cargando provincias: $e');
       setState(() {
         _cargadoProvincias = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar provincias: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
+
+// ✅ MÉTODO: Limpiar campos de empadronamiento (en _cleanFormulario)
+  void _cleanFormulario() {
+    setState(() {
+      _rInicialiController.clear();
+      _rFinalController.clear();
+      _cInicialiController.clear();
+      _cFinalController.clear();
+      _observacionesController.clear();
+      _incidenciasController.clear();
+      _cTotal.clear();
+      _rTotal.clear();
+
+      // Limpiar también los dígitos finales
+      _rInicialDigitoFinalController.text = '';
+      _rFinalDigitoFinalController.text = '';
+      _cInicialDigitoFinalController.text = '';
+      _cFinalDigitoFinalController.text = '';
+
+      // ✅ Limpiar campos de empadronamiento
+      _provinciaSeleccionada = null;
+      _puntoEmpadronamientoSeleccionado = null;
+      _puntoEmpadronamientoId = null;
+      _puntosEmpadronamiento = [];
+
+      _fechaController.text = DateTime.now().toString().split('.')[0];
+      diferenciaC = 0;
+      diferenciaR = 0;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Formulario limpiado'),
+          backgroundColor: Colors.blueGrey,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
 }
