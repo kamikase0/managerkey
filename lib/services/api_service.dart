@@ -12,6 +12,20 @@ class ApiService {
   final AuthService? _authService;
   final String? _accessToken;
 
+  // ✅ DEFINIR _headers como propiedad
+  Map<String, String> get _headers {
+    final token = _accessToken;
+    if (token != null) {
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+    }
+    return {
+      'Content-Type': 'application/json',
+    };
+  }
+
   // ✅ SOPORTE PARA DOS MODOS: Con AuthService (completo) o solo con token (simple)
   ApiService({AuthService? authService, String? accessToken})
       : _authService = authService,
@@ -26,6 +40,7 @@ class ApiService {
   static final String _reportesEndpoint = 'reportesdiarios/';
 
   String get registrosEndpoint => '$_baseUrl$_registrosEndpoint';
+
   String get reportesEndpoint => '$_baseUrl$_reportesEndpoint';
 
   // ✅ GETTER PARA ACCESO TOKEN
@@ -68,7 +83,9 @@ class ApiService {
             response = await request(newAccessToken);
           }
         } else {
-          print('❌ El refresco del token falló. El usuario debe re-autenticarse.');
+          print(
+            '❌ El refresco del token falló. El usuario debe re-autenticarse.',
+          );
         }
       }
 
@@ -88,17 +105,21 @@ class ApiService {
     try {
       final response = await _makeAuthenticatedRequest((token) {
         print('🔔 Solicitando reportes diarios desde: $url');
-        return http.get(
+        return http
+            .get(
           url,
           headers: {
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
           },
-        ).timeout(const Duration(seconds: 20));
+        )
+            .timeout(const Duration(seconds: 20));
       });
 
       print('✅ Response status final: ${response.statusCode}');
-      print('📥 Response body sample: ${response.body.length > 100 ? response.body.substring(0, 100) + '...' : response.body}');
+      print(
+        '📥 Response body sample: ${response.body.length > 100 ? response.body.substring(0, 100) + '...' : response.body}',
+      );
 
       if (response.statusCode == 200) {
         try {
@@ -156,7 +177,9 @@ class ApiService {
   /// =============================
   /// 📊 Enviar Reporte Diario - MÉTODO MEJORADO
   /// =============================
-  Future<Map<String, dynamic>> enviarReporteDiario(Map<String, dynamic> reporte) async {
+  Future<Map<String, dynamic>> enviarReporteDiario(
+      Map<String, dynamic> reporte,
+      ) async {
     final url = Uri.parse(reportesEndpoint);
 
     // ✅ LIMPIAR DATOS ANTES DE ENVIAR
@@ -169,7 +192,8 @@ class ApiService {
       final response = await _makeAuthenticatedRequest((token) {
         print('🔔 Enviando POST → $url');
         print('🧾 Body: $body');
-        return http.post(
+        return http
+            .post(
           url,
           headers: {
             'Content-Type': 'application/json',
@@ -177,7 +201,8 @@ class ApiService {
             'Authorization': 'Bearer $token',
           },
           body: body,
-        ).timeout(const Duration(seconds: 20));
+        )
+            .timeout(const Duration(seconds: 20));
       });
 
       print('✅ Response status final: ${response.statusCode}');
@@ -209,10 +234,7 @@ class ApiService {
       }
     } catch (e) {
       print('❌ Excepción al enviar reporte: $e');
-      return {
-        'success': false,
-        'message': 'Error de conexión: $e'
-      };
+      return {'success': false, 'message': 'Error de conexión: $e'};
     }
   }
 
@@ -232,7 +254,8 @@ class ApiService {
       final response = await _makeAuthenticatedRequest((token) {
         print('🔔 Enviando registro de despliegue a: $url');
         print('🧾 Datos: $body');
-        return http.post(
+        return http
+            .post(
           url,
           headers: {
             'Content-Type': 'application/json',
@@ -240,7 +263,8 @@ class ApiService {
             'Authorization': 'Bearer $token',
           },
           body: body,
-        ).timeout(const Duration(seconds: 20));
+        )
+            .timeout(const Duration(seconds: 20));
       });
 
       print('✅ Response status final: ${response.statusCode}');
@@ -255,7 +279,7 @@ class ApiService {
   }
 
   /// =============================
-  /// 📥 Obtener Registros Despliegue - MÉTODO MEJORADO
+  /// 📥 Obtener Registros Despliegue - MÉTODO CORREGIDO
   /// =============================
   Future<List<RegistroDespliegue>> obtenerRegistros() async {
     final url = Uri.parse(registrosEndpoint);
@@ -263,39 +287,51 @@ class ApiService {
     try {
       final response = await _makeAuthenticatedRequest((token) {
         print('🔔 Solicitando registros desde: $url');
-        return http.get(
+        return http
+            .get(
           url,
           headers: {
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
           },
-        ).timeout(const Duration(seconds: 20));
+        )
+            .timeout(const Duration(seconds: 20));
       });
 
       print('Response status final: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         try {
-          final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
-          return data.map((json) {
+          final List<dynamic> data = jsonDecode(
+            utf8.decode(response.bodyBytes),
+          );
+
+          List<RegistroDespliegue> registros = [];
+          for (var json in data) {
             try {
-              return RegistroDespliegue.fromJson(json);
+              // ✅ CORREGIDO: Usar fromApiMap en lugar de fromJson
+              final registro = RegistroDespliegue.fromApiMap(json);
+              registros.add(registro);
             } catch (e) {
               print('❌ Error mapeando registro: $e');
-              // Devolver un registro vacío o manejar el error según necesites
-              return RegistroDespliegue(
-                destino: 'Error',
+              // Crear registro de error con todos los parámetros requeridos
+              final registroError = RegistroDespliegue(
                 latitud: '0',
                 longitud: '0',
+                descripcionReporte: null,
                 estado: 'ERROR',
                 sincronizar: false,
                 observaciones: 'Error parsing data',
                 incidencias: '',
                 fechaHora: DateTime.now().toIso8601String(),
                 operadorId: 0,
+                sincronizado: false, // ✅ PARÁMETRO REQUERIDO
+                centroEmpadronamiento: null,
               );
+              registros.add(registroError);
             }
-          }).toList();
+          }
+          return registros;
         } catch (e) {
           print('❌ Error decodificando JSON de registros: $e');
           return [];
@@ -328,7 +364,9 @@ class ApiService {
   /// =============================
   /// 🆕 MÉTODO PARA OBTENER REPORTES POR OPERADOR
   /// =============================
-  Future<List<Map<String, dynamic>>> obtenerReportesPorOperador(int operadorId) async {
+  Future<List<Map<String, dynamic>>> obtenerReportesPorOperador(
+      int operadorId,
+      ) async {
     try {
       final todosReportes = await obtenerReportesDiarios();
       return todosReportes.where((reporte) {
@@ -352,18 +390,22 @@ class ApiService {
         throw Exception('No hay token de autenticación disponible');
       }
 
-      final url = Uri.parse('http://34.176.50.193:8001/api/registrosdespliegue/');
+      final url = Uri.parse(
+        'http://34.176.50.193:8001/api/registrosdespliegue/',
+      );
 
       print('📡 GET $url');
 
-      final response = await http.get(
+      final response = await http
+          .get(
         url,
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-      ).timeout(
+      )
+          .timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw Exception('Timeout al obtener registros'),
       );
@@ -413,25 +455,31 @@ class ApiService {
   /// 📥 Obtener registros de despliegue de un operador específico - CORREGIDO
   /// GET http://34.176.50.193:8001/api/registrosdespliegue/?operador=ID
   /// =============================
-  Future<List<Map<String, dynamic>>> obtenerRegistrosDespliegueDelOperador(int idOperador) async {
+  Future<List<Map<String, dynamic>>> obtenerRegistrosDespliegueDelOperador(
+      int idOperador,
+      ) async {
     try {
       final token = await _getAccessToken();
       if (token == null) {
         throw Exception('No hay token de autenticación disponible');
       }
 
-      final url = Uri.parse('http://34.176.50.193:8001/api/registrosdespliegue/?operador=$idOperador');
+      final url = Uri.parse(
+        'http://34.176.50.193:8001/api/registrosdespliegue/?operador=$idOperador',
+      );
 
       print('📡 GET $url');
 
-      final response = await http.get(
+      final response = await http
+          .get(
         url,
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-      ).timeout(
+      )
+          .timeout(
         const Duration(seconds: 10),
         onTimeout: () => throw Exception('Timeout al obtener registros'),
       );
@@ -471,6 +519,43 @@ class ApiService {
     } catch (e) {
       print('❌ Error: $e');
       rethrow;
+    }
+  }
+
+  /// =============================
+  /// 🆕 MÉTODO PARA OBTENER ÚLTIMO REGISTRO DE DESPLIEGUE - CORREGIDO
+  /// =============================
+  Future<RegistroDespliegue?> obtenerUltimoRegistroDespliegue(int operadorId) async {
+    try {
+      final token = await _getAccessToken();
+      if (token == null) {
+        print('❌ No hay token de autenticación disponible');
+        return null;
+      }
+
+      final response = await http.get(
+        Uri.parse('http://34.176.50.193:8001/api/ultimo-registro-despliegue/$operadorId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        print('reponse, $response');
+        final data = json.decode(response.body);
+        print('data $data');
+        return RegistroDespliegue.fromApiMap(data);
+      } else if (response.statusCode == 404) {
+        print('📭 No hay registro activo en servidor para operador $operadorId');
+        return null;
+      } else {
+        print('❌ Error al obtener registro: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Error en obtenerUltimoRegistroDespliegue: $e');
+      return null;
     }
   }
 }

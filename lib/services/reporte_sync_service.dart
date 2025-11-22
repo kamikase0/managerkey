@@ -311,7 +311,6 @@ class ReporteSyncService {
 
       // Guardar registro de despliegue localmente
       final registroDespliegue = RegistroDespliegue(
-        destino: despliegueData['destino'],
         latitud: despliegueData['latitud'],
         longitud: despliegueData['longitud'],
         estado: despliegueData['estado'],
@@ -319,7 +318,9 @@ class ReporteSyncService {
         observaciones: despliegueData['observaciones'],
         incidencias: despliegueData['incidencias'] ?? '',
         fechaHora: despliegueData['fecha_hora_salida'],
+        sincronizado: false,
         operadorId: despliegueData['operador'],
+        centroEmpadronamiento: despliegueData['centroEmpadronamiento'],
       );
 
       final despliegueId = await _databaseService.insertRegistroDespliegue(registroDespliegue);
