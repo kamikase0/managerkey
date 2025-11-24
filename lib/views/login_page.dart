@@ -1,10 +1,11 @@
-// views/login_page.dart (VERSIÓN CORREGIDA)
 import 'package:flutter/material.dart';
+import 'package:quickalert/models/quickalert_type.dart';
+import 'package:quickalert/widgets/quickalert_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io'; // Importar para SocketException
+import 'dart:io';
 import '../main.dart';
 import '../services/auth_service.dart';
-import 'home_page.dart';
+import '../utils/alert_helper.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -44,6 +45,14 @@ class _LoginPageState extends State<LoginPage> {
       _emailController.text = data['username']!;
       _passwordController.text = 'Bolivia2025';
     });
+
+    // Mostrar confirmación del perfil cargado
+    AlertHelper.showInfo(
+      context: context,
+      title: 'Perfil Cargado',
+      text: 'Perfil de ${data['group']} cargado. Presiona "Iniciar Sesión"',
+      autoCloseSeconds: 2,
+    );
   }
 
   Future<void> _submitLogin() async {
@@ -54,6 +63,13 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // Mostrar loading
+      AlertHelper.showLoading(
+        context: context,
+        title: 'Iniciando Sesión',
+        text: 'Verificando credenciales...',
+      );
+
       print('🔄 Iniciando proceso de login...');
 
       // Realizar login
@@ -70,22 +86,20 @@ class _LoginPageState extends State<LoginPage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('access_token', authResponse.access);
 
-      // ✅ NUEVO: Esperar un momento para que la sincronización de puntos se complete
-      print('🔄 Esperando sincronización de puntos de empadronamiento...');
-      await Future.delayed(const Duration(seconds: 3));
+      // Cerrar loading
+      AlertHelper.closeLoading(context);
 
-      // Navegar al home
-      print('🚀 Navegando al Home...');
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const HomePageWrapper()),
-      );
+      // ✅ CORRECCIÓN: Mostrar éxito y navegar después
+      _showSuccessAndNavigate();
 
     } catch (e) {
       if (!mounted) return;
 
-      // MANEJO ESPECÍFICO DE ERRORES DE CONEXIÓN
-      String errorMessage = _getUserFriendlyErrorMessage(e);
-      _showErrorDialog(errorMessage);
+      // Cerrar loading si está abierto
+      AlertHelper.closeLoading(context);
+
+      // Manejo de errores con AlertHelper
+      _handleLoginError(e);
     } finally {
       if (mounted) {
         setState(() {
@@ -93,6 +107,47 @@ class _LoginPageState extends State<LoginPage> {
         });
       }
     }
+  }
+
+  void _showSuccessAndNavigate() {
+    // Mostrar alerta de éxito
+    QuickAlert.show(
+      context: context,
+      type: QuickAlertType.success,
+      title: '¡Bienvenido!',
+      text: 'Sesión iniciada correctamente',
+      autoCloseDuration: const Duration(seconds: 2),
+      barrierDismissible: false,
+      showConfirmBtn: false,
+    );
+
+    //Navegar automaticamnte despues de la alerta
+    Future.delayed(const Duration(seconds: 2),(){
+      if(mounted){
+        _navigateToHome();
+      }
+    });
+  }
+
+  void _navigateToHome() {
+    print('🚀 Navegando al Home...');
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const HomePageWrapper()),
+          (route) => false,
+    );
+  }
+
+  void _handleLoginError(dynamic error) {
+    print('🔍 Error original: $error');
+
+    String errorMessage = _getUserFriendlyErrorMessage(error);
+
+    // Usar AlertHelper para mostrar el error
+    AlertHelper.showError(
+      context: context,
+      title: 'Error de Inicio de Sesión',
+      text: errorMessage,
+    );
   }
 
   String _getUserFriendlyErrorMessage(dynamic error) {
@@ -139,44 +194,8 @@ class _LoginPageState extends State<LoginPage> {
     return 'Error al iniciar sesión. Verifica tus credenciales y conexión.';
   }
 
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Error de conexión'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            const SizedBox(height: 16),
-            const Text(
-              'Sugerencias:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text('• Verifica tu conexión a internet'),
-            const Text('• Revisa la configuración de red'),
-            const Text('• Contacta al administrador si el problema persiste'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Método para verificar conexión antes de intentar login
+
   Future<bool> _checkInternetConnection() async {
     try {
       final result = await InternetAddress.lookup('google.com');
@@ -184,6 +203,24 @@ class _LoginPageState extends State<LoginPage> {
     } on SocketException catch (_) {
       return false;
     }
+  }
+
+  // Método mejorado con verificación de conexión
+  Future<void> _submitLoginWithConnectionCheck() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Verificar conexión primero
+    bool hasConnection = await _checkInternetConnection();
+    if (!hasConnection) {
+      AlertHelper.showError(
+        context: context,
+        title: 'Sin Conexión',
+        text: 'No hay conexión a internet. Verifica tu conexión e intenta nuevamente.',
+      );
+      return;
+    }
+
+    await _submitLogin();
   }
 
   @override
@@ -274,7 +311,7 @@ class _LoginPageState extends State<LoginPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _submitLogin,
+                          onPressed: _isLoading ? null : _submitLoginWithConnectionCheck,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             backgroundColor: Colors.blue,
@@ -316,7 +353,7 @@ class _LoginPageState extends State<LoginPage> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => _quickLogin('operador'),
+                              onPressed: _isLoading ? null : () => _quickLogin('operador'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.blue,
                                 side: const BorderSide(color: Colors.blue),
@@ -330,7 +367,7 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => _quickLogin('soporte'),
+                              onPressed: _isLoading ? null : () => _quickLogin('soporte'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.green,
                                 side: const BorderSide(color: Colors.green),
@@ -344,7 +381,7 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => _quickLogin('coordinador'),
+                              onPressed: _isLoading ? null : () => _quickLogin('coordinador'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.orange,
                                 side: const BorderSide(color: Colors.orange),

@@ -53,7 +53,9 @@ void main() async {
       print('DEBUG: ID Operador: $idOperador, Tipo: $userType');
     } else {
       print('DEBUG: ❌ Faltan datos para iniciar servicio de ubicación');
-      print('DEBUG: User: ${user != null}, Token: ${accessToken != null}, IdOperador: $idOperador');
+      print(
+        'DEBUG: User: ${user != null}, Token: ${accessToken != null}, IdOperador: $idOperador',
+      );
     }
   } else {
     print('DEBUG: ℹ️ No hay sesión activa al iniciar app');
@@ -143,7 +145,8 @@ class AuthWrapper extends StatelessWidget {
 
         if (snapshot.hasData && snapshot.data!) {
           return ConnectivityHandler(
-            customMessage: 'No se puede conectar con el servidor de reportes. '
+            customMessage:
+                'No se puede conectar con el servidor de reportes. '
                 'Verifica tu conexión a internet y intenta nuevamente.',
             child: const HomePageWrapper(),
           );
@@ -156,12 +159,129 @@ class AuthWrapper extends StatelessWidget {
 }
 
 class HomePageWrapper extends StatefulWidget {
-  const HomePageWrapper({super.key});
+  const HomePageWrapper({Key? key}) : super(key: key);
 
   @override
   State<HomePageWrapper> createState() => _HomePageWrapperState();
 }
 
+// class _HomePageWrapperState extends State<HomePageWrapper> {
+//   bool _isServiceInitialized = false;
+//   String? _errorMessage;
+//
+//   @override
+//   void initState() {
+//     super.initState();
+//     _initializeServices();
+//   }
+//
+//   Future<void> _initializeServices() async {
+//     try {
+//       final authService = Provider.of<AuthService>(context, listen: false);
+//       final syncService = Provider.of<ReporteSyncService>(
+//         context,
+//         listen: false,
+//       );
+//       final ubicacionService = Provider.of<UbicacionService>(
+//         context,
+//         listen: false,
+//       );
+//
+//       final accessToken = await authService.getAccessToken();
+//       if (accessToken != null && accessToken.isNotEmpty) {
+//         await syncService.initialize(accessToken: accessToken);
+//         print('✅ SyncService inicializado correctamente');
+//
+//         // INICIAR SERVICIO DE UBICACIÓN DESPUÉS DEL LOGIN
+//         final user = await authService.getCurrentUser();
+//         final idOperador = await authService.getIdOperador();
+//
+//         if (user != null && idOperador != null) {
+//           final userType = authService.determinarTipoUsuario(user);
+//           ubicacionService.iniciarServicioUbicacion(
+//             idOperador, // ✅ Ahora es int
+//             userType,
+//             accessToken,
+//           );
+//           print('✅ Servicio de ubicación iniciado después del login');
+//
+//           // PROBAR EL SERVICIO
+//           final stats = await ubicacionService.obtenerEstadisticas();
+//           print('📊 Estadísticas del servicio: $stats');
+//         } else {
+//           print('⚠️ Usuario o idOperador no disponible');
+//         }
+//       } else {
+//         print('⚠️ No hay accessToken disponible');
+//       }
+//
+//       if (mounted) {
+//         setState(() {
+//           _isServiceInitialized = true;
+//         });
+//       }
+//     } catch (e, stackTrace) {
+//       print('❌ Error inicializando servicios: $e');
+//       print('Stack trace: $stackTrace');
+//
+//       if (mounted) {
+//         setState(() {
+//           _isServiceInitialized = true;
+//           _errorMessage = e.toString();
+//         });
+//       }
+//     }
+//   }
+//
+//   @override
+//   Widget build(BuildContext context) {
+//
+//     if (!_isServiceInitialized) {
+//       return const Scaffold(
+//         body: Center(
+//           child: Column(
+//             mainAxisAlignment: MainAxisAlignment.center,
+//             children: [
+//               CircularProgressIndicator(),
+//               SizedBox(height: 16),
+//               Text('Inicializando servicios...'),
+//             ],
+//           ),
+//         ),
+//       );
+//     }
+//
+//     if (_errorMessage != null) {
+//       WidgetsBinding.instance.addPostFrameCallback((_) {
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           SnackBar(
+//             content: Text('Error inicializando: $_errorMessage'),
+//             backgroundColor: Colors.orange,
+//             duration: const Duration(seconds: 3),
+//           ),
+//         );
+//       });
+//     }
+//
+//     return HomePage(
+//       onLogout: () {
+//         final ubicacionService = Provider.of<UbicacionService>(
+//           context,
+//           listen: false,
+//         );
+//         ubicacionService.detenerServicioUbicacion();
+//
+//
+//         Navigator.of(context).pushAndRemoveUntil(
+//           MaterialPageRoute(builder: (_) => const LoginPage()),
+//           (route) => false,
+//         );
+//       },
+//     );
+//   }
+// }
+
+// EN main.dart - REEMPLAZA el _HomePageWrapperState completo
 class _HomePageWrapperState extends State<HomePageWrapper> {
   bool _isServiceInitialized = false;
   String? _errorMessage;
@@ -169,55 +289,66 @@ class _HomePageWrapperState extends State<HomePageWrapper> {
   @override
   void initState() {
     super.initState();
+    print('🏠 HomePageWrapper - initState INICIADO');
     _initializeServices();
   }
 
   Future<void> _initializeServices() async {
     try {
+      print('🔧 1. Inicializando servicios...');
+
       final authService = Provider.of<AuthService>(context, listen: false);
       final syncService = Provider.of<ReporteSyncService>(context, listen: false);
       final ubicacionService = Provider.of<UbicacionService>(context, listen: false);
 
       final accessToken = await authService.getAccessToken();
+      print('🔑 2. Access Token obtenido: ${accessToken != null ? "SI" : "NO"}');
+
       if (accessToken != null && accessToken.isNotEmpty) {
+        print('🔄 3. Inicializando SyncService...');
         await syncService.initialize(accessToken: accessToken);
-        print('✅ SyncService inicializado correctamente');
+        print('✅ 4. SyncService inicializado correctamente');
 
         // INICIAR SERVICIO DE UBICACIÓN DESPUÉS DEL LOGIN
         final user = await authService.getCurrentUser();
         final idOperador = await authService.getIdOperador();
 
+        print('👤 5. Usuario: ${user != null ? user.username : "NULL"}');
+        print('🆔 6. ID Operador: $idOperador');
+
         if (user != null && idOperador != null) {
           final userType = authService.determinarTipoUsuario(user);
+          print('🎯 7. Tipo de usuario: $userType');
+
           ubicacionService.iniciarServicioUbicacion(
-            idOperador, // ✅ Ahora es int
+            idOperador,
             userType,
             accessToken,
           );
-          print('✅ Servicio de ubicación iniciado después del login');
-
-          // PROBAR EL SERVICIO
-          final stats = await ubicacionService.obtenerEstadisticas();
-          print('📊 Estadísticas del servicio: $stats');
+          print('📍 8. Servicio de ubicación iniciado');
         } else {
-          print('⚠️ Usuario o idOperador no disponible');
+          print('⚠️ 9. Usuario o idOperador no disponible');
         }
       } else {
-        print('⚠️ No hay accessToken disponible');
+        print('❌ 10. No hay accessToken disponible');
+        throw Exception('No hay token de acceso disponible');
       }
 
       if (mounted) {
+        print('✅ 11. Todos los servicios inicializados - Marcando como listo');
         setState(() {
           _isServiceInitialized = true;
         });
       }
+
     } catch (e, stackTrace) {
-      print('❌ Error inicializando servicios: $e');
+      print('❌ ERROR CRÍTICO en inicialización: $e');
       print('Stack trace: $stackTrace');
 
       if (mounted) {
+        print('⚠️ 12. Error manejado, mostrando HomePage de todas formas');
         setState(() {
-          _isServiceInitialized = true;
+          _isServiceInitialized = true; // ✅ IMPORTANTE: Permitir que continúe
           _errorMessage = e.toString();
         });
       }
@@ -226,7 +357,10 @@ class _HomePageWrapperState extends State<HomePageWrapper> {
 
   @override
   Widget build(BuildContext context) {
+    print('🏠 HomePageWrapper - build ejecutado, _isServiceInitialized: $_isServiceInitialized');
+
     if (!_isServiceInitialized) {
+      print('⏳ Mostrando loading...');
       return const Scaffold(
         body: Center(
           child: Column(
@@ -242,10 +376,11 @@ class _HomePageWrapperState extends State<HomePageWrapper> {
     }
 
     if (_errorMessage != null) {
+      print('⚠️ Mostrando snackbar de error: $_errorMessage');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error inicializando: $_errorMessage'),
+            content: Text('Advertencia: $_errorMessage'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 3),
           ),
@@ -253,8 +388,10 @@ class _HomePageWrapperState extends State<HomePageWrapper> {
       });
     }
 
+    print('🎉 Mostrando HomePage...');
     return HomePage(
       onLogout: () {
+        print('🚪 Ejecutando logout...');
         final ubicacionService = Provider.of<UbicacionService>(context, listen: false);
         ubicacionService.detenerServicioUbicacion();
 
