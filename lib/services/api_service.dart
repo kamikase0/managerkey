@@ -37,7 +37,7 @@ class ApiService {
 
   static final String _baseUrl = Enviroment.apiUrlDev;
   static final String _registrosEndpoint = 'registrosdespliegue/';
-  static final String _reportesEndpoint = 'reportesdiarios/';
+  static final String _reportesEndpoint = '/reportesdiarios/';
 
   String get registrosEndpoint => '$_baseUrl$_registrosEndpoint';
 

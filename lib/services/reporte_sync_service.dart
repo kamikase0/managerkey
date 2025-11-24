@@ -1,5 +1,11 @@
+import 'dart:convert';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:http/http.dart' as http;
+import 'package:sqflite/sqflite.dart';
+import '../config/enviroment.dart';
 import '../models/registro_despliegue_model.dart';
+import 'auth_service.dart';
 import 'database_service.dart';
 import 'api_service.dart';
 import 'dart:async';
@@ -223,31 +229,32 @@ class ReporteSyncService {
   }
 
   /// Guardar reporte con geolocalización (método unificado)
-  Future<Map<String, dynamic>> saveReporteGeolocalizacion({
-    required Map<String, dynamic> reporteData,
-    required Map<String, dynamic> despliegueData,
-  }) async {
-    try {
-      final isOnline = await _isConnected();
+  // Future<Map<String, dynamic>> saveReporteGeolocalizacion({
+  //   required Map<String, dynamic> reporteData,
+  //   required Map<String, dynamic> despliegueData,
+  // }) async {
+  //   try {
+  //     final isOnline = await _isConnected();
+  //
+  //     if (isOnline) {
+  //       return await _sendReporteGeolocalizacionToServer(
+  //         reporteData: reporteData,
+  //         despliegueData: despliegueData,
+  //       );
+  //     } else {
+  //       return await _saveReporteGeolocalizacionLocally(
+  //         reporteData: reporteData,
+  //         despliegueData: despliegueData,
+  //       );
+  //     }
+  //   } catch (e) {
+  //     return await _saveReporteGeolocalizacionLocally(
+  //       reporteData: reporteData,
+  //       despliegueData: despliegueData,
+  //     );
+  //   }
+  // }
 
-      if (isOnline) {
-        return await _sendReporteGeolocalizacionToServer(
-          reporteData: reporteData,
-          despliegueData: despliegueData,
-        );
-      } else {
-        return await _saveReporteGeolocalizacionLocally(
-          reporteData: reporteData,
-          despliegueData: despliegueData,
-        );
-      }
-    } catch (e) {
-      return await _saveReporteGeolocalizacionLocally(
-        reporteData: reporteData,
-        despliegueData: despliegueData,
-      );
-    }
-  }
 
   Future<Map<String, dynamic>> _sendReporteGeolocalizacionToServer({
     required Map<String, dynamic> reporteData,
@@ -388,6 +395,238 @@ class ReporteSyncService {
       print('❌ Error durante la limpieza de reportes locales sincronizados: $e');
     }
   }
+
+  // ✅ MÉTODO ACTUALIZADO: saveReporteGeolocalizacion
+// Busca este método en reporte_sync_service.dart y reemplázalo
+
+  Future<Map<String, dynamic>> saveReporteGeolocalizacion({
+    required Map<String, dynamic> reporteData,
+    required Map<String, dynamic> despliegueData,
+  }) async {
+    try {
+      final tieneInternet = await _isConnected();
+
+      print('═══════════════════════════════════════════════════════════');
+      print('📤 ENVIANDO REPORTE DIARIO');
+      print('═══════════════════════════════════════════════════════════');
+      print('🌐 ¿Tiene internet?: $tieneInternet');
+      print('📋 Datos del reporte: $reporteData');
+
+      if (tieneInternet) {
+        final accessToken = await AuthService().getAccessToken();
+        if (accessToken == null || accessToken.isEmpty) {
+          throw Exception('No se pudo obtener token de autenticación');
+        }
+
+        // ✅ URL CORRECTA PARA REPORTES
+        final url = '${Enviroment.apiUrlDev}/reportesdiarios/';
+
+        print('🔗 URL: $url');
+        print('🔑 Token: ${accessToken.substring(0, 20)}...');
+
+        // ✅ CONSTRUIR JSON CORRECTO CON TODOS LOS CAMPOS
+        final jsonReporte = {
+          // Campos del reporte
+          'fecha_reporte': reporteData['fecha_reporte'],
+          'contador_inicial_c': reporteData['contador_inicial_c'],
+          'contador_final_c': reporteData['contador_final_c'],
+          'registro_c': reporteData['registro_c'],
+          'contador_inicial_r': reporteData['contador_inicial_r'],
+          'contador_final_r': reporteData['contador_final_r'],
+          'registro_r': reporteData['registro_r'],
+          'incidencias': reporteData['incidencias'] ?? '',
+          'observaciones': reporteData['observaciones'] ?? '',
+          'estado': reporteData['estado'] ?? 'ENVIO REPORTE',
+          'sincronizar': reporteData['sincronizar'] ?? true,
+          'operador': reporteData['operador'],
+          'estacion': reporteData['estacion'],
+          'centro_empadronamiento': reporteData['centro_empadronamiento'],
+
+          // ✅ NUEVO: Agregar fecha_registro (hora actual)
+          'fecha_registro': DateTime.now().toLocal().toIso8601String().replaceAll('Z', ''),
+        };
+
+        print('📦 JSON para API: $jsonReporte');
+
+        try {
+          final response = await http
+              .post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode(jsonReporte),
+          )
+              .timeout(const Duration(seconds: 30));
+
+          print('📥 Status Code: ${response.statusCode}');
+          print('📥 Response: ${response.body}');
+
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            print('✅ Reporte enviado exitosamente al servidor');
+
+            // ✅ OPCIONAL: También enviar despliegue si es necesario
+            if (despliegueData['latitud'] != null && despliegueData['longitud'] != null) {
+              await _enviarDespliegueReporte(despliegueData, accessToken);
+            }
+
+            return {
+              'success': true,
+              'message': '✅ Reporte enviado exitosamente',
+              'saved_locally': false,
+            };
+          } else {
+            print('❌ Error del servidor: ${response.statusCode}');
+            print('📄 Response body: ${response.body}');
+
+            // Guardar localmente si falla
+            print('💾 Guardando reporte localmente como fallback...');
+            await _guardarReporteLocalmente(jsonReporte);
+
+            return {
+              'success': true,
+              'message': '⚠️ Error al enviar. Reporte guardado localmente.',
+              'saved_locally': true,
+            };
+          }
+        } catch (e) {
+          print('❌ Error de conexión: $e');
+          print('💾 Guardando reporte localmente como fallback...');
+          await _guardarReporteLocalmente(jsonReporte);
+
+          return {
+            'success': true,
+            'message': '⚠️ Error de conexión. Reporte guardado localmente.',
+            'saved_locally': true,
+          };
+        }
+      } else {
+        // Sin internet
+        print('📡 Sin conexión a internet');
+        print('💾 Guardando reporte localmente...');
+        await _guardarReporteLocalmente(reporteData);
+
+        return {
+          'success': true,
+          'message': '📱 Sin internet. Reporte guardado localmente.',
+          'saved_locally': true,
+        };
+      }
+    } catch (e) {
+      print('❌ Error en saveReporteGeolocalizacion: $e');
+      return {
+        'success': false,
+        'message': 'Error: ${e.toString()}',
+        'saved_locally': false,
+      };
+    }
+  }
+
+// ✅ NUEVO MÉTODO: Guardar reporte localmente
+  Future<void> _guardarReporteLocalmente(Map<String, dynamic> reporteData) async {
+    try {
+      final db = await DatabaseService().database;
+
+      // Mapear los datos al formato de la tabla
+      final datosParaBD = {
+        'fecha_reporte': reporteData['fecha_reporte'],
+        'contador_inicial_c': reporteData['contador_inicial_c'],
+        'contador_final_c': reporteData['contador_final_c'],
+        'contador_c': reporteData['registro_c'],
+        'contador_inicial_r': reporteData['contador_inicial_r'],
+        'contador_final_r': reporteData['contador_final_r'],
+        'contador_r': reporteData['registro_r'],
+        'incidencias': reporteData['incidencias'] ?? '',
+        'observaciones': reporteData['observaciones'] ?? '',
+        'operador': reporteData['operador'],
+        'estacion': reporteData['estacion'],
+        'centro_empadronamiento': reporteData['centro_empadronamiento'],
+        'estado': reporteData['estado'] ?? 'PENDIENTE_SINCRONIZACION',
+        'sincronizar': reporteData['sincronizar'] ? 1 : 0,
+        'synced': 0,
+        'updated_at': DateTime.now().toLocal().toIso8601String(),
+      };
+
+      final id = await db.insert(
+        'reportes_diarios',
+        datosParaBD,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      print('✅ Reporte guardado localmente con ID: $id');
+    } catch (e) {
+      print('❌ Error guardando reporte localmente: $e');
+    }
+  }
+
+// ✅ NUEVO MÉTODO: Enviar despliegue (ubicación) del reporte
+  Future<void> _enviarDespliegueReporte(
+      Map<String, dynamic> despliegueData,
+      String accessToken,
+      ) async {
+    try {
+      final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
+
+      final jsonDespliegue = {
+        'latitud': double.tryParse(despliegueData['latitud'].toString()) ?? 0,
+        'longitud': double.tryParse(despliegueData['longitud'].toString()) ?? 0,
+        'descripcion_reporte': null,
+        'estado': despliegueData['estado'] ?? 'REPORTE ENVIADO',
+        'sincronizar': true,
+        'observaciones': despliegueData['observaciones'],
+        'incidencias': despliegueData['incidencias'],
+        'fecha_hora': despliegueData['fecha_hora'],
+        'operador': despliegueData['operador'],
+      };
+
+      print('📍 Enviando despliegue (ubicación) del reporte...');
+      print('🔗 URL: $url');
+      print('📦 Datos: $jsonDespliegue');
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode(jsonDespliegue),
+      )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ Despliegue enviado exitosamente');
+      } else {
+        print('⚠️ Error enviando despliegue: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error en _enviarDespliegueReporte: $e');
+    }
+  }
+
+  // ✅ AGREGAR este método en la clase ReporteSyncService
+
+  /// Verificar si hay conexión a internet
+  Future<bool> verificarConexion() async {
+    try {
+      final result = await _connectivity.checkConnectivity();
+      final tieneConexion = result != ConnectivityResult.none;
+      print('🌐 Verificación de conexión: ${tieneConexion ? "CONECTADO" : "SIN CONEXIÓN"}');
+      return tieneConexion;
+    } catch (e) {
+      print('❌ Error verificando conexión: $e');
+      return false;
+    }
+  }
+
+  // /// Método privado (mantener para compatibilidad)
+  // Future<bool> _isConnected() async {
+  //   return await verificarConexion();
+  // }
+
 }
 
 class SyncStatus {
