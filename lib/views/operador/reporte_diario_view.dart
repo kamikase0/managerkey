@@ -1,4 +1,4 @@
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:manager_key/services/punto_empadronamiento_service.dart';
@@ -10,6 +10,7 @@ import '../../services/reporte_sync_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../models/user_model.dart';
+import '../../utils/alert_helper.dart';
 
 class ReporteDiarioView extends StatefulWidget {
   const ReporteDiarioView({Key? key}) : super(key: key);
@@ -22,16 +23,24 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   final _formKey = GlobalKey<FormState>();
 
   // Controladores
-  final TextEditingController _codigoEstacionController =  TextEditingController();
+  final TextEditingController _codigoEstacionController =
+      TextEditingController();
   final TextEditingController _transmitidoController = TextEditingController();
   final TextEditingController _rInicialiController = TextEditingController();
   final TextEditingController _rFinalController = TextEditingController();
   final TextEditingController _rTotalController = TextEditingController();
+  final TextEditingController _rObservacionesController =
+      TextEditingController();
+
   final TextEditingController _cInicialiController = TextEditingController();
   final TextEditingController _cFinalController = TextEditingController();
   final TextEditingController _cTotalController = TextEditingController();
+  final TextEditingController _cObservacionesController =
+      TextEditingController();
+  final TextEditingController _cSaltosController = TextEditingController();
+
   final TextEditingController _observacionesController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _incidenciasController = TextEditingController();
   final TextEditingController _rTotal = TextEditingController();
   final TextEditingController _cTotal = TextEditingController();
@@ -39,13 +48,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
   // Controladores para los dígitos finales (el último número del formato)
   final TextEditingController _rInicialDigitoFinalController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _rFinalDigitoFinalController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _cInicialDigitoFinalController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _cFinalDigitoFinalController =
-  TextEditingController();
+      TextEditingController();
 
   late ReporteSyncService _syncService;
   late User? _userData;
@@ -72,7 +81,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   bool _cargadoProvincias = false;
   int? _puntoEmpadronamientoId;
   final PuntoEmpadronamientoService _puntoService =
-  PuntoEmpadronamientoService();
+      PuntoEmpadronamientoService();
+
+  //Habilitacion o deshababilitacion de campos
+  bool _camposR = false;
+  bool _camposC = false;
 
   @override
   void initState() {
@@ -109,7 +122,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           final operador = _userData!.operador!;
           _transmitidoController.text = operador.idOperador.toString();
           _codigoEstacionController.text =
-          'Estación: ${operador.nroEstacion ?? 'N/A'}';
+              'Estación: ${operador.nroEstacion ?? 'N/A'}';
 
           // ✅ CORREGIDO: Usar nro_estacion en lugar de id_operador
           _equipoId = (operador.nroEstacion ?? '0').toString().padLeft(5, '0');
@@ -121,23 +134,20 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-  // ✅ CORREGIDO: Método para construir formato R
   String _buildFormatoR(String cuatroDigitos, String digitoFinal) {
     return 'R-$_equipoId-${cuatroDigitos.padLeft(4, '0')}-$digitoFinal';
   }
 
-  // ✅ CORREGIDO: Método para construir formato C
   String _buildFormatoC(String cuatroDigitos, String digitoFinal) {
     return 'C-$_equipoId-${cuatroDigitos.padLeft(4, '0')}-$digitoFinal';
   }
 
-  // ✅ MÉTODO ACTUALIZADO: Validar registro R con formato completo
   void _validarRegistroR(
-      String valor,
-      TextEditingController controller,
-      TextEditingController digitoFinalController,
-      bool esInicial,
-      ) {
+    String valor,
+    TextEditingController controller,
+    TextEditingController digitoFinalController,
+    bool esInicial,
+  ) {
     String limpio = valor.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (limpio.length > 4) {
@@ -151,7 +161,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       );
     }
 
-    // Construir formato completo
     final formatoCompleto = _buildFormatoR(limpio, digitoFinalController.text);
     print(
       '📝 R ${esInicial ? 'Inicial' : 'Final'} formateado: $formatoCompleto',
@@ -160,13 +169,12 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     _calcularDiferencia();
   }
 
-  // ✅ MÉTODO ACTUALIZADO: Validar registro C con formato completo
   void _validarRegistroC(
-      String valor,
-      TextEditingController controller,
-      TextEditingController digitoFinalController,
-      bool esInicial,
-      ) {
+    String valor,
+    TextEditingController controller,
+    TextEditingController digitoFinalController,
+    bool esInicial,
+  ) {
     String limpio = valor.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (limpio.length > 4) {
@@ -180,7 +188,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       );
     }
 
-    // Construir formato completo
     final formatoCompleto = _buildFormatoC(limpio, digitoFinalController.text);
     print(
       '📝 C ${esInicial ? 'Inicial' : 'Final'} formateado: $formatoCompleto',
@@ -189,14 +196,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     _calcularDiferencia();
   }
 
-  // ✅ MÉTODO ACTUALIZADO: Validar dígito final
   void _validarDigitoFinal(
-      String valor,
-      TextEditingController controller,
-      TextEditingController cuatroDigitosController,
-      bool esR,
-      bool esInicial,
-      ) {
+    String valor,
+    TextEditingController controller,
+    TextEditingController cuatroDigitosController,
+    bool esR,
+    bool esInicial,
+  ) {
     String limpio = valor.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (limpio.length > 1) {
@@ -210,7 +216,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       );
     }
 
-    // Recalcular con el nuevo dígito final
     if (esR) {
       _validarRegistroR(
         cuatroDigitosController.text,
@@ -228,22 +233,18 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-  // ✅ MÉTODO ACTUALIZADO: Calcular diferencia con formato completo
   void _calcularDiferencia() {
-    // Obtener solo los 4 dígitos principales (ignorar el dígito final)
-    final rInicial4Digitos = _rInicialiController.text.padLeft(4, '0');
-    final rFinal4Digitos = _rFinalController.text.padLeft(4, '0');
-    final cInicial4Digitos = _cInicialiController.text.padLeft(4, '0');
-    final cFinal4Digitos = _cFinalController.text.padLeft(4, '0');
+    // 1. Obtener los textos de los controladores iniciales y finales
+    final rInicialStr = _rInicialiController.text;
+    final rFinalStr = _rFinalController.text;
+    final cInicialStr = _cInicialiController.text;
+    final cFinalStr = _cFinalController.text;
 
-    // Convertir SOLO los 4 dígitos a números (ignorar dígito final)
-    final rInicial = int.tryParse(rInicial4Digitos) ?? 0;
-    final rFinal = int.tryParse(rFinal4Digitos) ?? 0;
-    final cInicial = int.tryParse(cInicial4Digitos) ?? 0;
-    final cFinal = int.tryParse(cFinal4Digitos) ?? 0;
+    // --- VALIDACIÓN Y CÁLCULO PARA 'R' (Recepción) ---
+    if (rInicialStr.isNotEmpty && rFinalStr.isNotEmpty) {
+      final rInicial = int.tryParse(rInicialStr) ?? 0;
+      final rFinal = int.tryParse(rFinalStr) ?? 0;
 
-    // Calcular diferencia para R (solo con 4 dígitos)
-    if (rInicial4Digitos.isNotEmpty && rFinal4Digitos.isNotEmpty) {
       if (rFinal >= rInicial) {
         setState(() {
           diferenciaR = (rFinal - rInicial) + 1;
@@ -265,13 +266,23 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           );
         }
       }
+    } else {
+      setState(() {
+        _rTotal.clear();
+      });
     }
 
-    // Calcular diferencia para C (solo con 4 dígitos)
-    if (cInicial4Digitos.isNotEmpty && cFinal4Digitos.isNotEmpty) {
+    // --- VALIDACIÓN Y CÁLCULO PARA 'C' (Combustible) ---
+    if (cInicialStr.isNotEmpty && cFinalStr.isNotEmpty) {
+      final cInicial = int.tryParse(cInicialStr) ?? 0;
+      final cFinal = int.tryParse(cFinalStr) ?? 0;
+
       if (cFinal >= cInicial) {
+        final cSaltos = _cSaltosController.text;
+        final saltosValor = int.tryParse(cSaltos) ?? 0;
+
         setState(() {
-          diferenciaC = (cFinal - cInicial) + 1;
+          diferenciaC = ((cFinal - cInicial) - saltosValor + 1);
           _cTotal.text = diferenciaC.toString();
         });
       } else {
@@ -290,14 +301,186 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           );
         }
       }
+    } else {
+      setState(() {
+        _cTotal.clear();
+      });
     }
-
-    // ✅ LOG PARA VERIFICAR
-    print('🧮 Cálculo - R: $rInicial → $rFinal = $diferenciaR');
-    print('🧮 Cálculo - C: $cInicial → $cFinal = $diferenciaC');
   }
 
-  // ✅ MÉTODO ACTUALIZADO: Enviar reporte con formato completo
+  // void _enviarReporte() async {
+  //   if (!_formKey.currentState!.validate()) return;
+  //
+  //   if (!_gpsActivado && _ubicacionRequerida) {
+  //     _mostrarDialogoActivacionGPS();
+  //     return;
+  //   }
+  //
+  //   setState(() => _isSubmitting = true);
+  //
+  //   try {
+  //     if (_userData?.operador == null) {
+  //       throw Exception('Datos de operador no disponibles');
+  //     }
+  //
+  //     bool ubicacionCapturada = false;
+  //     if (_gpsActivado && _ubicacionRequerida) {
+  //       ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
+  //     }
+  //
+  //     final ahora = DateTime.now();
+  //     final fechaHora = ahora.toIso8601String();
+  //
+  //     // --- Lógica condicional para 'R' ---
+  //     String rInicialCompleto;
+  //     String rFinalCompleto;
+  //     int registroR;
+  //
+  //     if (!_camposR) {
+  //       print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
+  //       rInicialCompleto = _buildFormatoR('0000', '0');
+  //       rFinalCompleto = _buildFormatoR('0000', '0');
+  //       registroR = 0;
+  //     } else {
+  //       rInicialCompleto = _buildFormatoR(
+  //         _rInicialiController.text.padLeft(4, '0'),
+  //         _rInicialDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _rInicialDigitoFinalController.text,
+  //       );
+  //
+  //       rFinalCompleto = _buildFormatoR(
+  //         _rFinalController.text.padLeft(4, '0'),
+  //         _rFinalDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _rFinalDigitoFinalController.text,
+  //       );
+  //       registroR = diferenciaR;
+  //     }
+  //
+  //     // --- Lógica condicional para 'C' ---
+  //     String cInicialCompleto;
+  //     String cFinalCompleto;
+  //     int registroC;
+  //
+  //     if (!_camposC) {
+  //       print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
+  //       cInicialCompleto = _buildFormatoC('0000', '0');
+  //       cFinalCompleto = _buildFormatoC('0000', '0');
+  //       registroC = 0;
+  //     } else {
+  //       cInicialCompleto = _buildFormatoC(
+  //         _cInicialiController.text.padLeft(4, '0'),
+  //         _cInicialDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _cInicialDigitoFinalController.text,
+  //       );
+  //       cFinalCompleto = _buildFormatoC(
+  //         _cFinalController.text.padLeft(4, '0'),
+  //         _cFinalDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _cFinalDigitoFinalController.text,
+  //       );
+  //       registroC = diferenciaC;
+  //     }
+  //
+  //     final reporteData = {
+  //       'fecha_reporte': _fechaController.text,
+  //       'contador_inicial_c': cInicialCompleto,
+  //       'contador_final_c': cFinalCompleto,
+  //       'registro_c': registroC,
+  //       'contador_inicial_r': rInicialCompleto,
+  //       'contador_final_r': rFinalCompleto,
+  //       'registro_r': registroR,
+  //       'incidencias': _incidenciasController.text,
+  //       'observaciones': _observacionesController.text,
+  //       'operador': _userData!.operador!.idOperador,
+  //       'estacion': _userData!.operador!.idEstacion,
+  //       'centro_empadronamiento': _puntoEmpadronamientoId,
+  //       'estado': 'ENVIO REPORTE',
+  //       'sincronizar': true,
+  //     };
+  //
+  //     final despliegueData = {
+  //       'destino':
+  //           'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
+  //       'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
+  //       'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
+  //       'descripcion_reporte': null,
+  //       'estado': 'REPORTE ENVIADO',
+  //       'sincronizar': true,
+  //       'observaciones':
+  //           'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
+  //       'incidencias': _ubicacionRequerida
+  //           ? (ubicacionCapturada
+  //                 ? 'Ubicación capturada correctamente'
+  //                 : 'No se pudo capturar ubicación')
+  //           : 'Ubicación no requerida para este reporte',
+  //       'fecha_hora': fechaHora,
+  //       'operador': _userData!.operador!.idOperador,
+  //       'sincronizado': false,
+  //     };
+  //
+  //     print('📤 Enviando reporte con formatos:');
+  //     print('📍 R Inicial: $rInicialCompleto');
+  //     print('📍 R Final: $rFinalCompleto');
+  //     print('📍 Registro R: $registroR');
+  //     print('📍 C Inicial: $cInicialCompleto');
+  //     print('📍 C Final: $cFinalCompleto');
+  //     print('📍 Registro C: $registroC');
+  //     print('📍 Punto Empadronamiento ID: $_puntoEmpadronamientoId');
+  //
+  //     final result = await _syncService.saveReporteGeolocalizacion(
+  //       reporteData: reporteData,
+  //       despliegueData: despliegueData,
+  //     );
+  //
+  //     if (!mounted) return;
+  //
+  //     final mensaje = result['success']
+  //         ? (result['saved_locally'] == true
+  //               ? '📱 Reporte guardado localmente. Se sincronizará cuando haya internet.'
+  //               : (_ubicacionRequerida
+  //                     ? (ubicacionCapturada
+  //                           ? '✅ Reporte enviado con geolocalización'
+  //                           : '⚠️ Reporte enviado sin geolocalización')
+  //                     : '✅ Reporte enviado sin ubicación'))
+  //         : result['message'];
+  //
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text(mensaje),
+  //         backgroundColor: result['success']
+  //             ? (result['saved_locally'] == true ? Colors.orange : Colors.green)
+  //             : Colors.red,
+  //         duration: const Duration(seconds: 4),
+  //       ),
+  //     );
+  //
+  //     if (result['success']) {
+  //       _cleanFormulario();
+  //       setState(() {
+  //         _latitud = null;
+  //         _longitud = null;
+  //         _coordenadas = 'No capturadas';
+  //         _locationCaptured = false;
+  //         _ubicacionRequerida = true;
+  //         _camposR = false;
+  //         _camposC = false;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     if (!mounted) return;
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+  //     );
+  //   } finally {
+  //     if (mounted) {
+  //       setState(() => _isSubmitting = false);
+  //     }
+  //   }
+  // }
+
   void _enviarReporte() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -321,49 +504,72 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       final ahora = DateTime.now();
       final fechaHora = ahora.toIso8601String();
 
-      // ✅ CONSTRUIR FORMATOS COMPLETOS
-      final rInicialCompleto = _buildFormatoR(
-        _rInicialiController.text.padLeft(4, '0'),
-        _rInicialDigitoFinalController.text.isEmpty
-            ? '0'
-            : _rInicialDigitoFinalController.text,
-      );
+      // --- Lógica condicional para 'R' ---
+      String rInicialCompleto;
+      String rFinalCompleto;
+      int registroR;
 
-      final rFinalCompleto = _buildFormatoR(
-        _rFinalController.text.padLeft(4, '0'),
-        _rFinalDigitoFinalController.text.isEmpty
-            ? '0'
-            : _rFinalDigitoFinalController.text,
-      );
+      if (!_camposR) {
+        print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
+        rInicialCompleto = _buildFormatoR('0000', '0');
+        rFinalCompleto = _buildFormatoR('0000', '0');
+        registroR = 0;
+      } else {
+        rInicialCompleto = _buildFormatoR(
+          _rInicialiController.text.padLeft(4, '0'),
+          _rInicialDigitoFinalController.text.isEmpty
+              ? '0'
+              : _rInicialDigitoFinalController.text,
+        );
 
-      final cInicialCompleto = _buildFormatoC(
-        _cInicialiController.text.padLeft(4, '0'),
-        _cInicialDigitoFinalController.text.isEmpty
-            ? '0'
-            : _cInicialDigitoFinalController.text,
-      );
+        rFinalCompleto = _buildFormatoR(
+          _rFinalController.text.padLeft(4, '0'),
+          _rFinalDigitoFinalController.text.isEmpty
+              ? '0'
+              : _rFinalDigitoFinalController.text,
+        );
+        registroR = diferenciaR;
+      }
 
-      final cFinalCompleto = _buildFormatoC(
-        _cFinalController.text.padLeft(4, '0'),
-        _cFinalDigitoFinalController.text.isEmpty
-            ? '0'
-            : _cFinalDigitoFinalController.text,
-      );
+      // --- Lógica condicional para 'C' ---
+      String cInicialCompleto;
+      String cFinalCompleto;
+      int registroC;
 
-      // ✅ NUEVO: Incluir punto de empadronamiento en el reporte
+      if (!_camposC) {
+        print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
+        cInicialCompleto = _buildFormatoC('0000', '0');
+        cFinalCompleto = _buildFormatoC('0000', '0');
+        registroC = 0;
+      } else {
+        cInicialCompleto = _buildFormatoC(
+          _cInicialiController.text.padLeft(4, '0'),
+          _cInicialDigitoFinalController.text.isEmpty
+              ? '0'
+              : _cInicialDigitoFinalController.text,
+        );
+        cFinalCompleto = _buildFormatoC(
+          _cFinalController.text.padLeft(4, '0'),
+          _cFinalDigitoFinalController.text.isEmpty
+              ? '0'
+              : _cFinalDigitoFinalController.text,
+        );
+        registroC = diferenciaC;
+      }
+
       final reporteData = {
         'fecha_reporte': _fechaController.text,
-        'contador_inicial_c': cInicialCompleto, // ✅ FORMATO COMPLETO
-        'contador_final_c': cFinalCompleto, // ✅ FORMATO COMPLETO
-        'registro_c': diferenciaC,
-        'contador_inicial_r': rInicialCompleto, // ✅ FORMATO COMPLETO
-        'contador_final_r': rFinalCompleto, // ✅ FORMATO COMPLETO
-        'registro_r': diferenciaR,
+        'contador_inicial_c': cInicialCompleto,
+        'contador_final_c': cFinalCompleto,
+        'registro_c': registroC,
+        'contador_inicial_r': rInicialCompleto,
+        'contador_final_r': rFinalCompleto,
+        'registro_r': registroR,
         'incidencias': _incidenciasController.text,
         'observaciones': _observacionesController.text,
         'operador': _userData!.operador!.idOperador,
         'estacion': _userData!.operador!.idEstacion,
-        'centro_empadronamiento': _puntoEmpadronamientoId, // ✅ NUEVO CAMPO
+        'centro_empadronamiento': _puntoEmpadronamientoId,
         'estado': 'ENVIO REPORTE',
         'sincronizar': true,
       };
@@ -391,8 +597,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       print('📤 Enviando reporte con formatos:');
       print('📍 R Inicial: $rInicialCompleto');
       print('📍 R Final: $rFinalCompleto');
+      print('📍 Registro R: $registroR');
       print('📍 C Inicial: $cInicialCompleto');
       print('📍 C Final: $cFinalCompleto');
+      print('📍 Registro C: $registroC');
       print('📍 Punto Empadronamiento ID: $_puntoEmpadronamientoId');
 
       final result = await _syncService.saveReporteGeolocalizacion(
@@ -402,24 +610,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
       if (!mounted) return;
 
-      final mensaje = result['success']
-          ? (result['saved_locally'] == true
-          ? '📱 Reporte guardado localmente. Se sincronizará cuando haya internet.'
-          : (_ubicacionRequerida
-          ? (ubicacionCapturada
-          ? '✅ Reporte enviado con geolocalización'
-          : '⚠️ Reporte enviado sin geolocalización')
-          : '✅ Reporte enviado sin ubicación'))
-          : result['message'];
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mensaje),
-          backgroundColor: result['success']
-              ? (result['saved_locally'] == true ? Colors.orange : Colors.green)
-              : Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
+      // ✅ NUEVO: Mostrar alerta de confirmación
+      await _mostrarAlertaResultado(
+        exito: result['success'],
+        guardadoLocal: result['saved_locally'] == true,
+        ubicacionCapturada: ubicacionCapturada,
+        ubicacionRequerida: _ubicacionRequerida,
+        mensaje: result['message'],
       );
 
       if (result['success']) {
@@ -430,13 +627,15 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           _coordenadas = 'No capturadas';
           _locationCaptured = false;
           _ubicacionRequerida = true;
+          _camposR = false;
+          _camposC = false;
         });
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+
+      // ✅ NUEVO: Mostrar alerta de error
+      await _mostrarAlertaError('Error al enviar reporte: $e');
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
@@ -444,10 +643,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-    // ✅ NUEVO: Widget para campos de empadronamiento - SOLO DROPDOWNS
-  // ✅ REEMPLAZAR ESTA FUNCIÓN en reporte_diario_view.dart
-
-// âœ… NUEVO: Widget para campos de empadronamiento - SOLO DROPDOWNS
   Widget _buildCamposEmpadronamiento() {
     return Card(
       elevation: 2,
@@ -465,13 +660,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // ✅ Dropdown de Provincia/Municipio
             _buildProvinciaDropdown(),
-
             const SizedBox(height: 12),
-
-            // ✅ Dropdown de Punto de Empadronamiento
             _buildPuntoEmpadronamientoDropdown(),
           ],
         ),
@@ -505,7 +695,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           ),
           child: Row(
             children: [
-              // Prefijo fijo con el número de estación
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -521,15 +710,12 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                 ),
                 child: Text(
                   '${esR ? 'R' : 'C'}-$_equipoId-',
-                  // ✅ Muestra el número de estación
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
                 ),
               ),
-
-              // 4 dígitos principales
               Expanded(
                 child: TextFormField(
                   controller: controller4Digitos,
@@ -547,21 +733,19 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                   maxLength: 4,
                   onChanged: (valor) => esR
                       ? _validarRegistroR(
-                    valor,
-                    controller4Digitos,
-                    controllerDigitoFinal,
-                    esInicial,
-                  )
+                          valor,
+                          controller4Digitos,
+                          controllerDigitoFinal,
+                          esInicial,
+                        )
                       : _validarRegistroC(
-                    valor,
-                    controller4Digitos,
-                    controllerDigitoFinal,
-                    esInicial,
-                  ),
+                          valor,
+                          controller4Digitos,
+                          controllerDigitoFinal,
+                          esInicial,
+                        ),
                 ),
               ),
-
-              // Separador
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 8,
@@ -572,8 +756,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                 ),
                 child: const Text('-', style: TextStyle(fontSize: 14)),
               ),
-
-              // Dígito final (NO interviene en cálculo)
               SizedBox(
                 width: 60,
                 child: TextFormField(
@@ -598,17 +780,15 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                       esR,
                       esInicial,
                     );
-
-                    // ✅ MOSTRAR FORMATO COMPLETO EN CONSOLA
                     final formatoCompleto = esR
                         ? _buildFormatoR(
-                      controller4Digitos.text.padLeft(4, '0'),
-                      valor.isEmpty ? '0' : valor,
-                    )
+                            controller4Digitos.text.padLeft(4, '0'),
+                            valor.isEmpty ? '0' : valor,
+                          )
                         : _buildFormatoC(
-                      controller4Digitos.text.padLeft(4, '0'),
-                      valor.isEmpty ? '0' : valor,
-                    );
+                            controller4Digitos.text.padLeft(4, '0'),
+                            valor.isEmpty ? '0' : valor,
+                          );
                     print(
                       '🎯 ${esR ? 'R' : 'C'} ${esInicial ? 'Inicial' : 'Final'}: $formatoCompleto',
                     );
@@ -626,148 +806,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       ],
     );
   }
-
-  // ✅ NUEVO: Widget para campos de empadronamiento
-  // Solución con Autocomplete para búsqueda
-  // Widget _buildCamposEmpadronamiento() {
-  //   return Card(
-  //     elevation: 2,
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(16),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           const Text(
-  //             'UBICACIÓN DE EMPADRONAMIENTO',
-  //             style: TextStyle(
-  //               fontWeight: FontWeight.bold,
-  //               fontSize: 16,
-  //               color: Colors.purple,
-  //             ),
-  //           ),
-  //           const SizedBox(height: 16),
-  //
-  //           // Selector de Provincia/Municipio
-  //           DropdownButtonFormField<String>(
-  //             value: _provinciaSeleccionada,
-  //             decoration: InputDecoration(
-  //               labelText: 'Provincia/Municipio',
-  //               border: OutlineInputBorder(
-  //                 borderRadius: BorderRadius.circular(8),
-  //               ),
-  //               contentPadding: const EdgeInsets.symmetric(
-  //                 horizontal: 12,
-  //                 vertical: 10,
-  //               ),
-  //             ),
-  //             isExpanded: true,
-  //             items: _provincias.map((String provincia) {
-  //               return DropdownMenuItem<String>(
-  //                 value: provincia,
-  //                 child: Text(
-  //                   provincia,
-  //                   overflow: TextOverflow.ellipsis,
-  //                 ),
-  //               );
-  //             }).toList(),
-  //             onChanged: _onProvinciaSeleccionada,
-  //             validator: (value) {
-  //               if (value == null || value.isEmpty) {
-  //                 return 'Seleccione una provincia';
-  //               }
-  //               return null;
-  //             },
-  //           ),
-  //
-  //           const SizedBox(height: 12),
-  //
-  //           // Autocomplete para Punto de Empadronamiento
-  //           Autocomplete<String>(
-  //             optionsBuilder: (TextEditingValue textEditingValue) {
-  //               if (textEditingValue.text == '') {
-  //                 return const Iterable<String>.empty();
-  //               }
-  //               return _puntosEmpadronamiento.where((String option) {
-  //                 return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-  //               });
-  //             },
-  //             onSelected: (String selection) {
-  //               _onPuntoEmpadronamientoSeleccionado(selection);
-  //             },
-  //             fieldViewBuilder: (
-  //                 BuildContext context,
-  //                 TextEditingController textEditingController,
-  //                 FocusNode focusNode,
-  //                 VoidCallback onFieldSubmitted,
-  //                 ) {
-  //               return TextFormField(
-  //                 controller: textEditingController,
-  //                 focusNode: focusNode,
-  //                 decoration: InputDecoration(
-  //                   labelText: 'Punto de Empadronamiento',
-  //                   hintText: 'Escriba para buscar...',
-  //                   border: OutlineInputBorder(
-  //                     borderRadius: BorderRadius.circular(8),
-  //                   ),
-  //                   contentPadding: const EdgeInsets.symmetric(
-  //                     horizontal: 12,
-  //                     vertical: 10,
-  //                   ),
-  //                 ),
-  //                 validator: (value) {
-  //                   if (value == null || value.isEmpty || _puntoEmpadronamientoSeleccionado == null) {
-  //                     return 'Seleccione un punto de empadronamiento';
-  //                   }
-  //                   return null;
-  //                 },
-  //               );
-  //             },
-  //             optionsViewBuilder: (
-  //                 BuildContext context,
-  //                 AutocompleteOnSelected<String> onSelected,
-  //                 Iterable<String> options,
-  //                 ) {
-  //               return Align(
-  //                 alignment: Alignment.topLeft,
-  //                 child: Material(
-  //                   elevation: 4.0,
-  //                   child: SizedBox(
-  //                     height: 200.0,
-  //                     child: ListView.builder(
-  //                       padding: EdgeInsets.zero,
-  //                       itemCount: options.length,
-  //                       itemBuilder: (BuildContext context, int index) {
-  //                         final String option = options.elementAt(index);
-  //                         return ListTile(
-  //                           title: Text(
-  //                             option,
-  //                             overflow: TextOverflow.ellipsis,
-  //                             maxLines: 2,
-  //                           ),
-  //                           onTap: () {
-  //                             onSelected(option);
-  //                           },
-  //                         );
-  //                       },
-  //                     ),
-  //                   ),
-  //                 ),
-  //               );
-  //             },
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-
-
-
-
-
-
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -929,134 +967,293 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
                       const SizedBox(height: 20),
 
-                      // ✅ NUEVO: CAMPOS DE EMPADRONAMIENTO
+                      // CAMPOS DE EMPADRONAMIENTO
                       _buildCamposEmpadronamiento(),
 
                       const SizedBox(height: 20),
 
-                      // SECCIÓN RECEPCIÓN (R)
-                      Card(
-                        elevation: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'REGISTROS NUEVOS',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildCampoConFormatoCompleto(
-                                label: 'R Inicial',
-                                controller4Digitos: _rInicialiController,
-                                controllerDigitoFinal:
-                                _rInicialDigitoFinalController,
-                                esR: true,
-                                esInicial: true,
-                              ),
-                              const SizedBox(height: 12),
-                              _buildCampoConFormatoCompleto(
-                                label: 'R Final',
-                                controller4Digitos: _rFinalController,
-                                controllerDigitoFinal:
-                                _rFinalDigitoFinalController,
-                                esR: true,
-                                esInicial: false,
-                              ),
-                              const SizedBox(height: 12),
-                              TextFormField(
-                                readOnly: true,
-                                controller: _rTotal,
-                                decoration: InputDecoration(
-                                  labelText: 'TOTAL REGISTROS R',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.blue.shade50,
-                                ),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue,
-                                ),
-                              ),
-                            ],
+                      // ✅ SECCIÓN REGISTROS NUEVOS (R)
+                      ExpansionTile(
+                        key: Key('panel_r_${_camposR.toString()}'),
+                        maintainState: true,
+                        title: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (!_camposR) {
+                              AlertHelper.showConfirmRegistrarR(
+                                context: context,
+                                onConfirm: () {
+                                  setState(() {
+                                    _camposR = true;
+                                  });
+                                },
+                              );
+                            } else {
+                              // ✅ MEJORA: Mostrar confirmación al desactivar también
+                              _mostrarConfirmacionDesactivarR();
+                            }
+                          },
+                          child: Text(
+                            'REGISTROS NUEVOS (R) ${_camposR ? '(Activado)' : ''}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: _camposR
+                                  ? Colors.blue
+                                  : Colors.blue.withOpacity(0.7),
+                            ),
                           ),
                         ),
+                        leading: Icon(
+                          Icons.receipt,
+                          color: _camposR
+                              ? Colors.blue
+                              : Colors.blue.withOpacity(0.7),
+                        ),
+                        initiallyExpanded: _camposR,
+                        onExpansionChanged: (bool isExpanding) {
+                          if (isExpanding && !_camposR) {
+                            // Si intenta expandir sin haber activado, mostrar confirmación
+                            AlertHelper.showConfirmRegistrarR(
+                              context: context,
+                              onConfirm: () {
+                                setState(() {
+                                  _camposR = true;
+                                });
+                              },
+                            );
+                          } else if (!isExpanding && _camposR) {
+                            // Si intenta colapsar estando activado, mostrar confirmación
+                            _mostrarConfirmacionDesactivarR();
+                          }
+                        },
+                        collapsedBackgroundColor: _camposR
+                            ? Colors.blue.shade50
+                            : Colors.grey.shade100,
+                        backgroundColor: _camposR
+                            ? Colors.blue.shade50
+                            : Colors.grey.shade100,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildCampoConFormatoCompleto(
+                                  label: 'R Inicial',
+                                  controller4Digitos: _rInicialiController,
+                                  controllerDigitoFinal:
+                                      _rInicialDigitoFinalController,
+                                  esR: true,
+                                  esInicial: true,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildCampoConFormatoCompleto(
+                                  label: 'R Final',
+                                  controller4Digitos: _rFinalController,
+                                  controllerDigitoFinal:
+                                      _rFinalDigitoFinalController,
+                                  esR: true,
+                                  esInicial: false,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  readOnly: true,
+                                  controller: _rTotal,
+                                  decoration: InputDecoration(
+                                    labelText: 'TOTAL REGISTROS R',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.blue.shade50,
+                                    prefixIcon: const Icon(
+                                      Icons.house,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _rObservacionesController,
+                                  maxLines: 3,
+                                  decoration: InputDecoration(
+                                    labelText: 'Observacion R (Opcional)',
+                                    hintText:
+                                        'Ingrese observaciones de registro R...',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    contentPadding: const EdgeInsets.all(12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
 
-                      // SECCIÓN CAMBIO DE DOMICILIO(C)
-                      Card(
-                        elevation: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'REGISTROS CAMBIO DE DOMICILIO',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildCampoConFormatoCompleto(
-                                label: 'C Inicial',
-                                controller4Digitos: _cInicialiController,
-                                controllerDigitoFinal:
-                                _cInicialDigitoFinalController,
-                                esR: false,
-                                esInicial: true,
-                              ),
-                              const SizedBox(height: 12),
-                              _buildCampoConFormatoCompleto(
-                                label: 'C Final',
-                                controller4Digitos: _cFinalController,
-                                controllerDigitoFinal:
-                                _cFinalDigitoFinalController,
-                                esR: false,
-                                esInicial: false,
-                              ),
-                              const SizedBox(height: 12),
-                              TextFormField(
-                                readOnly: true,
-                                controller: _cTotal,
-                                decoration: InputDecoration(
-                                  labelText: 'TOTAL REGISTROS C',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.orange.shade50,
-                                ),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                            ],
+                      // ✅ SECCIÓN REGISTROS CAMBIO DE DOMICILIO (C) - CORREGIDO
+                      ExpansionTile(
+                        key: Key('panel_c_${_camposC.toString()}'),
+                        maintainState: true,
+                        title: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (!_camposC) {
+                              AlertHelper.showConfirmRegistrarC(
+                                context: context,
+                                onConfirm: () {
+                                  setState(() {
+                                    _camposC = true;
+                                  });
+                                },
+                              );
+                            } else {
+                              // ✅ MEJORA: Mostrar confirmación al desactivar también
+                              _mostrarConfirmacionDesactivarC();
+                            }
+                          },
+                          child: Text(
+                            'REGISTROS CAMBIO DE DOMICILIO (C) ${_camposC ? '(Activado)' : ''}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: _camposC
+                                  ? Colors.orange
+                                  : Colors.orange.withOpacity(0.7),
+                            ),
                           ),
                         ),
+                        leading: Icon(
+                          Icons.home_work,
+                          color: _camposC
+                              ? Colors.orange
+                              : Colors.orange.withOpacity(0.7),
+                        ),
+                        initiallyExpanded: _camposC,
+                        onExpansionChanged: (bool isExpanding) {
+                          if (isExpanding && !_camposC) {
+                            // Si intenta expandir sin haber activado, mostrar confirmación
+                            AlertHelper.showConfirmRegistrarC(
+                              context: context,
+                              onConfirm: () {
+                                setState(() {
+                                  _camposC = true;
+                                });
+                              },
+                            );
+                          } else if (!isExpanding && _camposC) {
+                            // Si intenta colapsar estando activado, mostrar confirmación
+                            _mostrarConfirmacionDesactivarC();
+                          }
+                        },
+                        collapsedBackgroundColor: _camposC
+                            ? Colors.orange.shade50
+                            : Colors.grey.shade100,
+                        backgroundColor: _camposC
+                            ? Colors.orange.shade50
+                            : Colors.grey.shade100,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildCampoConFormatoCompleto(
+                                  label: 'C Inicial',
+                                  controller4Digitos: _cInicialiController,
+                                  controllerDigitoFinal:
+                                      _cInicialDigitoFinalController,
+                                  esR: false,
+                                  esInicial: true,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildCampoConFormatoCompleto(
+                                  label: 'C Final',
+                                  controller4Digitos: _cFinalController,
+                                  controllerDigitoFinal:
+                                      _cFinalDigitoFinalController,
+                                  esR: false,
+                                  esInicial: false,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _cSaltosController,
+                                  decoration: InputDecoration(
+                                    labelText:
+                                        'Saltos en registro C (Opcional)',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (valor) {
+                                    _calcularDiferencia();
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  readOnly: true,
+                                  controller: _cTotal,
+                                  decoration: InputDecoration(
+                                    labelText: 'TOTAL REGISTROS C',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.orange.shade50,
+                                    prefixIcon: const Icon(
+                                      Icons.swap_horiz,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _cObservacionesController,
+                                  maxLines: 3,
+                                  decoration: InputDecoration(
+                                    labelText: 'Observacion C (Opcional)',
+                                    hintText:
+                                        'Ingrese observaciones de registro C...',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    contentPadding: const EdgeInsets.all(12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
 
                       // OBSERVACIONES
                       Card(
@@ -1067,7 +1264,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'OBSERVACIONES ADICIONALES',
+                                'INCIDENCIAS ADICIONALES',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
@@ -1076,24 +1273,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
-                                controller: _observacionesController,
+                                controller: _incidenciasController,
                                 maxLines: 4,
                                 decoration: InputDecoration(
-                                  labelText: 'Observaciones',
-                                  hintText: 'Ingrese sus observaciones aquí...',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  contentPadding: const EdgeInsets.all(12),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              TextFormField(
-                                controller: _incidenciasController,
-                                maxLines: 3,
-                                decoration: InputDecoration(
-                                  labelText: 'Incidencias (Opcional)',
-                                  hintText: 'Ingrese incidencias si las hay...',
+                                  labelText: 'Incidencias de Reporte Diario',
+                                  hintText: 'Ingrese sus incidente aquí...',
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -1123,23 +1307,23 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               ),
                               child: _isSubmitting
                                   ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation(
+                                          Colors.white,
+                                        ),
+                                      ),
+                                    )
                                   : const Text(
-                                'ENVIAR REPORTE',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                                      'ENVIAR REPORTE',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -1193,6 +1377,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     _rTotal.dispose();
     _cTotal.dispose();
     _fechaController.dispose();
+    _cSaltosController.dispose(); // ✅ Añadido dispose faltante
+    _rObservacionesController.dispose(); // ✅ Añadido dispose faltante
+    _cObservacionesController.dispose(); // ✅ Añadido dispose faltante
+    _rTotalController.dispose(); // ✅ Añadido dispose faltante
+    _cTotalController.dispose(); // ✅ Añadido dispose faltante
 
     // Dispose de los nuevos controladores de dígitos finales
     _rInicialDigitoFinalController.dispose();
@@ -1203,21 +1392,139 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     super.dispose();
   }
 
-  // ... (mantén los métodos de geolocalización existentes)
+  void _mostrarConfirmacionDesactivarR() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'Desactivar Registros R',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+          ),
+          content: const Text(
+            '¿Estás seguro de que quieres desactivar los Registros Nuevos (R)?\n\n'
+            'Los datos ingresados se perderán.',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.blue.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'CANCELAR',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _camposR = false;
+                  _registroRenCero(); // Limpiar campos R
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'DESACTIVAR',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _mostrarConfirmacionDesactivarC() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text(
+            'Desactivar Registros C',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+          ),
+          content: const Text(
+            '¿Estás seguro de que quieres desactivar los Registros de Cambio de Domicilio (C)?\n\n'
+            'Los datos ingresados se perderán.',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.orange.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'CANCELAR',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _camposC = false;
+                  _registroCenCero(); // Limpiar campos C
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'DESACTIVAR',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- MÉTODOS DE GEOLOCALIZACIÓN Y DIÁLOGOS ---
   Future<void> _verificarEstadoGPS() async {
     try {
       final servicioHabilitado = await Geolocator.isLocationServiceEnabled();
-      setState(() {
-        _gpsActivado = servicioHabilitado;
-      });
+      if (mounted) {
+        setState(() {
+          _gpsActivado = servicioHabilitado;
+        });
+      }
       print(
         '📍 Estado GPS: ${servicioHabilitado ? "ACTIVADO" : "DESACTIVADO"}',
       );
     } catch (e) {
       print('❌ Error verificando estado GPS: $e');
-      setState(() {
-        _gpsActivado = false;
-      });
+      if (mounted) {
+        setState(() {
+          _gpsActivado = false;
+        });
+      }
     }
   }
 
@@ -1259,31 +1566,39 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       print('📍 Iniciando captura de geolocalización...');
       final position = await LocationService().getCurrentLocation();
       if (position != null) {
-        setState(() {
-          _latitud = position.latitude.toStringAsFixed(6);
-          _longitud = position.longitude.toStringAsFixed(6);
-          _coordenadas = 'Lat: ${_latitud}\nLong: ${_longitud}';
-          _locationCaptured = true;
-        });
+        if (mounted) {
+          setState(() {
+            _latitud = position.latitude.toStringAsFixed(6);
+            _longitud = position.longitude.toStringAsFixed(6);
+            _coordenadas = 'Lat: $_latitud\nLong: $_longitud';
+            _locationCaptured = true;
+          });
+        }
         print('📍 Geolocalización capturada: $_coordenadas');
         return true;
       } else {
-        setState(() {
-          _locationCaptured = false;
-          _coordenadas = 'Error al capturar ubicación';
-        });
+        if (mounted) {
+          setState(() {
+            _locationCaptured = false;
+            _coordenadas = 'Error al capturar ubicación';
+          });
+        }
         print('⚠️ No se pudo capturar la ubicación');
         return false;
       }
     } catch (e) {
-      setState(() {
-        _locationCaptured = false;
-        _coordenadas = 'Error: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _locationCaptured = false;
+          _coordenadas = 'Error: $e';
+        });
+      }
       print('❌ Error capturando ubicación: $e');
       return false;
     } finally {
-      setState(() => _locationLoading = false);
+      if (mounted) {
+        setState(() => _locationLoading = false);
+      }
     }
   }
 
@@ -1351,20 +1666,14 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     );
   }
 
-  // ✅ REEMPLAZAR TODOS los métodos relacionados con empadronamiento por estos:
-
-
-
-// ✅ NUEVO: Widget Dropdown para Provincia
+  // --- MÉTODOS DE EMPADRONAMIENTO ---
   Widget _buildProvinciaDropdown() {
     return DropdownButtonFormField<String>(
       value: _provinciaSeleccionada,
       decoration: InputDecoration(
         labelText: 'Provincia/Municipio *',
         hintText: 'Seleccione una provincia',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 10,
@@ -1375,10 +1684,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       items: _provincias.map((String provincia) {
         return DropdownMenuItem<String>(
           value: provincia,
-          child: Text(
-            provincia,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text(provincia, overflow: TextOverflow.ellipsis),
         );
       }).toList(),
       onChanged: (String? nuevaProvincia) {
@@ -1393,7 +1699,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     );
   }
 
-// ✅ NUEVO: Widget Dropdown para Punto de Empadronamiento
   Widget _buildPuntoEmpadronamientoDropdown() {
     return DropdownButtonFormField<String>(
       value: _puntoEmpadronamientoSeleccionado,
@@ -1401,12 +1706,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         labelText: 'Punto de Empadronamiento *',
         hintText: _provinciaSeleccionada != null
             ? (_puntosEmpadronamiento.isEmpty
-            ? 'Cargando puntos...'
-            : 'Seleccione un punto')
+                  ? 'Cargando puntos...'
+                  : 'Seleccione un punto')
             : 'Primero seleccione una provincia',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 10,
@@ -1417,18 +1720,14 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       items: _puntosEmpadronamiento.map((String punto) {
         return DropdownMenuItem<String>(
           value: punto,
-          child: Text(
-            punto,
-            overflow: TextOverflow.ellipsis,
-            maxLines: 2,
-          ),
+          child: Text(punto, overflow: TextOverflow.ellipsis, maxLines: 2),
         );
       }).toList(),
-      onChanged: (_provinciaSeleccionada != null &&
-          _puntosEmpadronamiento.isNotEmpty)
+      onChanged:
+          (_provinciaSeleccionada != null && _puntosEmpadronamiento.isNotEmpty)
           ? (String? nuevoPunto) {
-        _onPuntoEmpadronamientoSeleccionado(nuevoPunto);
-      }
+              _onPuntoEmpadronamientoSeleccionado(nuevoPunto);
+            }
           : null,
       validator: (value) {
         if (_provinciaSeleccionada != null &&
@@ -1440,7 +1739,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     );
   }
 
-// ✅ MÉTODO: Cuando se selecciona una provincia
   void _onProvinciaSeleccionada(String? provincia) async {
     if (provincia == null) return;
 
@@ -1453,15 +1751,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
     try {
       print('📍 Cargando puntos para provincia: $provincia');
-
-      // Cargar puntos de empadronamiento para la provincia seleccionada
       final puntos = await _puntoService.getPuntosByProvincia(provincia);
       final nombresPuntos = puntos.map((p) => p.puntoEmpadronamiento).toList();
-
-      setState(() {
-        _puntosEmpadronamiento = nombresPuntos;
-      });
-
+      if (mounted) {
+        setState(() {
+          _puntosEmpadronamiento = nombresPuntos;
+        });
+      }
       print('✅ Puntos de empadronamiento cargados: ${puntos.length}');
       print('📌 Puntos: $nombresPuntos');
     } catch (e) {
@@ -1477,7 +1773,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-// ✅ MÉTODO: Cuando se selecciona un punto de empadronamiento
   void _onPuntoEmpadronamientoSeleccionado(String? punto) async {
     if (punto == null) return;
 
@@ -1487,11 +1782,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
     try {
       print('📍 Buscando ID para punto: $punto');
-
-      // Obtener el ID del punto seleccionado
-      final puntos = await _puntoService.getPuntosByProvincia(_provinciaSeleccionada!);
+      final puntos = await _puntoService.getPuntosByProvincia(
+        _provinciaSeleccionada!,
+      );
       final puntoSeleccionado = puntos.firstWhere(
-            (p) => p.puntoEmpadronamiento == punto,
+        (p) => p.puntoEmpadronamiento == punto,
         orElse: () => PuntoEmpadronamiento(
           id: 0,
           provincia: '',
@@ -1500,9 +1795,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       );
 
       if (puntoSeleccionado.id != 0) {
-        setState(() {
-          _puntoEmpadronamientoId = puntoSeleccionado.id;
-        });
+        if (mounted) {
+          setState(() {
+            _puntoEmpadronamientoId = puntoSeleccionado.id;
+          });
+        }
         print('✅ Punto de empadronamiento seleccionado:');
         print('   - ID: $_puntoEmpadronamientoId');
         print('   - Nombre: $punto');
@@ -1522,29 +1819,29 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-// ✅ MÉTODO: Cargar datos de empadronamiento al iniciar
   Future<void> _cargarDatosEmpadronamiento() async {
     try {
-      setState(() {
-        _cargadoProvincias = false;
-      });
-
+      if (mounted) {
+        setState(() {
+          _cargadoProvincias = false;
+        });
+      }
       print('📍 Cargando provincias...');
       final provincias = await _puntoService.getProvinciasFromLocalDatabase();
-
-      setState(() {
-        _provincias = provincias;
-        _cargadoProvincias = true;
-      });
-
+      if (mounted) {
+        setState(() {
+          _provincias = provincias;
+          _cargadoProvincias = true;
+        });
+      }
       print('✅ Provincias cargadas: ${_provincias.length}');
       print('📌 Provincias: $_provincias');
     } catch (e) {
       print('❌ Error cargando provincias: $e');
-      setState(() {
-        _cargadoProvincias = false;
-      });
       if (mounted) {
+        setState(() {
+          _cargadoProvincias = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al cargar provincias: $e'),
@@ -1555,8 +1852,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-// ✅ MÉTODO: Limpiar campos de empadronamiento (en _cleanFormulario)
   void _cleanFormulario() {
+    _formKey.currentState?.reset();
     setState(() {
       _rInicialiController.clear();
       _rFinalController.clear();
@@ -1566,14 +1863,15 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       _incidenciasController.clear();
       _cTotal.clear();
       _rTotal.clear();
+      _cSaltosController.clear();
+      _rObservacionesController.clear();
+      _cObservacionesController.clear();
 
-      // Limpiar también los dígitos finales
       _rInicialDigitoFinalController.text = '';
       _rFinalDigitoFinalController.text = '';
       _cInicialDigitoFinalController.text = '';
       _cFinalDigitoFinalController.text = '';
 
-      // ✅ Limpiar campos de empadronamiento
       _provinciaSeleccionada = null;
       _puntoEmpadronamientoSeleccionado = null;
       _puntoEmpadronamientoId = null;
@@ -1582,6 +1880,9 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       _fechaController.text = DateTime.now().toString().split('.')[0];
       diferenciaC = 0;
       diferenciaR = 0;
+
+      _camposR = false;
+      _camposC = false;
     });
 
     if (mounted) {
@@ -1595,4 +1896,201 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
+  void _registroRenCero() {
+    setState(() {
+      _rInicialiController.clear();
+      _rFinalController.clear();
+      _rInicialDigitoFinalController.clear();
+      _rFinalDigitoFinalController.clear();
+      _rTotal.clear();
+      _rObservacionesController.clear();
+    });
+  }
+
+  void _registroCenCero() {
+    setState(() {
+      _cInicialiController.clear();
+      _cFinalController.clear();
+      _cSaltosController.clear();
+      _cInicialDigitoFinalController.clear();
+      _cFinalDigitoFinalController.clear();
+      _cTotal.clear();
+      _cObservacionesController.clear();
+    });
+  }
+
+  // ✅ NUEVO: Función para mostrar alerta de resultado
+  Future<void> _mostrarAlertaResultado({
+    required bool exito,
+    required bool guardadoLocal,
+    required bool ubicacionCapturada,
+    required bool ubicacionRequerida,
+    String? mensaje,
+  }) async {
+    String titulo;
+    String contenido;
+    Color colorFondo;
+    IconData icono;
+
+    if (exito) {
+      if (guardadoLocal) {
+        titulo = '📱 Reporte Guardado Localmente';
+        contenido = 'El reporte se ha guardado en el dispositivo. '
+            'Se sincronizará automáticamente cuando se detecte conexión a internet.';
+        colorFondo = Colors.orange.shade50;
+        icono = Icons.signal_wifi_off;
+      } else {
+        if (ubicacionRequerida) {
+          if (ubicacionCapturada) {
+            titulo = '✅ Reporte Enviado con Éxito';
+            contenido = 'El reporte ha sido enviado correctamente '
+                'con geolocalización capturada.';
+            colorFondo = Colors.green.shade50;
+            icono = Icons.check_circle;
+          } else {
+            titulo = '⚠️ Reporte Enviado sin Ubicación';
+            contenido = 'El reporte ha sido enviado pero no se pudo '
+                'capturar la ubicación GPS.';
+            colorFondo = Colors.orange.shade50;
+            icono = Icons.location_off;
+          }
+        } else {
+          titulo = '✅ Reporte Enviado';
+          contenido = 'El reporte ha sido enviado correctamente '
+              'sin requerir ubicación.';
+          colorFondo = Colors.green.shade50;
+          icono = Icons.check_circle;
+        }
+      }
+    } else {
+      titulo = '❌ Error al Enviar';
+      contenido = mensaje ?? 'Ha ocurrido un error al intentar enviar el reporte.';
+      colorFondo = Colors.red.shade50;
+      icono = Icons.error;
+    }
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: colorFondo,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(icono, size: 28, color: _getColorIcono(exito, guardadoLocal)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  titulo,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _getColorTexto(exito, guardadoLocal),
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            contenido,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: _getColorBoton(exito, guardadoLocal),
+              ),
+              child: Text(
+                exito ? 'ACEPTAR' : 'REINTENTAR',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+// ✅ NUEVO: Función para mostrar alerta de error
+  Future<void> _mostrarAlertaError(String mensaje) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.red.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.error, size: 28, color: Colors.red.shade700),
+              const SizedBox(width: 12),
+              const Text(
+                '❌ Error',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            mensaje,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red.shade700,
+              ),
+              child: const Text(
+                'REINTENTAR',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+// ✅ NUEVO: Funciones auxiliares para colores
+  Color _getColorIcono(bool exito, bool guardadoLocal) {
+    if (!exito) return Colors.red.shade700;
+    if (guardadoLocal) return Colors.orange.shade700;
+    return Colors.green.shade700;
+  }
+
+  Color _getColorTexto(bool exito, bool guardadoLocal) {
+    if (!exito) return Colors.red.shade700;
+    if (guardadoLocal) return Colors.orange.shade700;
+    return Colors.green.shade700;
+  }
+
+  Color _getColorBoton(bool exito, bool guardadoLocal) {
+    if (!exito) return Colors.red.shade700;
+    if (guardadoLocal) return Colors.orange.shade700;
+    return Colors.green.shade700;
+  }
 }

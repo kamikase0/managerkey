@@ -105,6 +105,68 @@ class AlertHelper {
     );
   }
 
+
+  // ✅ ALERTA DE CONFIRMACIÓN DE SALIDA (ya la tienes en home_page.dart)
+  static Future<bool> mostrarDialogoDeSalida(BuildContext context) async {
+    final resultado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Confirmar Salida'),
+          content: const Text('¿Estás seguro de que quieres cerrar la sesión?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('NO', style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('SÍ, SALIR', style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+    return resultado ?? false;
+  }
+
+  // En tu archivo alert_helper.dart
+
+  /// =======================================================
+  /// ✅ NUEVA ALERTA: Confirmación para registrar C
+  /// =======================================================
+  /// Muestra una alerta para preguntar si se desea registrar "Cambio de Domicilio (C)".
+  // static void showConfirmRegistrarC({
+  //   required BuildContext context,
+  //   required VoidCallback onConfirm,
+  //   VoidCallback? onCancel,
+  // }) {
+  //   QuickAlert.show(
+  //     context: context,
+  //     type: QuickAlertType.confirm,
+  //     title: 'Registros Cambio de Domicilio (C)',
+  //     text: '¿Deseas registrar formularios de "Cambio de Domicilio"?',
+  //     confirmBtnText: 'Sí, registrar',
+  //     cancelBtnText: 'No, ahora no',
+  //     confirmBtnColor: Colors.orange, // Color temático para 'C'
+  //     onConfirmBtnTap: () {
+  //       Navigator.pop(context);
+  //       onConfirm();
+  //     },
+  //     onCancelBtnTap: () {
+  //       Navigator.pop(context);
+  //       onCancel?.call();
+  //     },
+  //   );
+  // }
+
+
   // Alerta de carga
   static void showLoading({
     required BuildContext context,
@@ -216,4 +278,139 @@ class AlertHelper {
       },
     );
   }
+
+
+  // En AlertHelper - Versiones mejoradas
+  static void showConfirmRegistrarR({
+    required BuildContext context,
+    required VoidCallback onConfirm,
+  }) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.receipt, color: Colors.blue),
+              SizedBox(width: 8),
+              Text(
+                'Activar Registros R',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            '¿Deseas activar los Registros Nuevos (R)?\n\n'
+                'Podrás ingresar los valores iniciales y finales para el conteo de registros nuevos.',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.blue.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'NO, GRACIAS',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onConfirm();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'SÍ, ACTIVAR',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  static void showConfirmRegistrarC({
+    required BuildContext context,
+    required VoidCallback onConfirm,
+  }) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.home_work, color: Colors.orange),
+              SizedBox(width: 8),
+              Text(
+                'Activar Registros C',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            '¿Deseas activar los Registros de Cambio de Domicilio (C)?\n\n'
+                'Podrás ingresar los valores iniciales y finales para el conteo de cambios de domicilio.',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.orange.shade50,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'NO, GRACIAS',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onConfirm();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'SÍ, ACTIVAR',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
 }

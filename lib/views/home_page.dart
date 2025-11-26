@@ -8,6 +8,7 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/reporte_sync_service.dart';
 import '../widgets/sidebar.dart';
+import '../utils/alert_helper.dart'; // ✅ AGREGAR ESTE IMPORT
 import 'operador_view.dart';
 import 'soporte_view.dart';
 import 'coordinador_view.dart';
@@ -32,14 +33,12 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Usar context.read es seguro dentro de initState
     _syncService = context.read<ReporteSyncService>();
     _loadUserData();
   }
 
   Future<void> _loadUserData() async {
     try {
-      // Es mejor usar el provider si ya está disponible
       final authService = context.read<AuthService>();
       final user = await authService.getCurrentUser();
 
@@ -49,13 +48,12 @@ class _HomePageState extends State<HomePage> {
           _userGroup = user.primaryGroup;
           _tipoOperador = user.tipoOperador ?? 'Operador Urbano';
           _idOperador = user.idOperador;
-          // Establecer vista inicial según tipo de operador
           _activeView = user.isOperadorRural ? 'operador' : 'reporte_diario';
         });
 
         print('✅ Usuario cargado: ${user.username}');
         print('🔧 Tipo Operador: $_tipoOperador');
-        print('🔑 ID Operador: $_idOperador');
+        print('📍 ID Operador: $_idOperador');
       } else {
         _setDefaultValues();
       }
@@ -76,76 +74,33 @@ class _HomePageState extends State<HomePage> {
 
   Widget _getCurrentView() {
     switch (_activeView) {
-    // Vistas comunes
       case 'operador':
         return const OperadorView();
       case 'reporte_diario':
         return const ReporteDiarioView();
-
-    // Vistas solo para Operador Rural
       case 'salida_ruta':
         return SalidaRutaView(idOperador: _idOperador ?? 0);
       case 'llegada_ruta':
         return LlegadaRutaView(idOperador: _idOperador ?? 0);
-
-    // Vistas de otros roles
       case 'soporte':
         return const SoporteView();
       case 'recepcion':
         return const RecepcionView();
       case 'coordinador':
         return const CoordinadorView();
-
       default:
         return const OperadorView();
     }
   }
 
-  // =======================================================
-  // >> NUEVA FUNCIÓN: DIÁLOGO DE CONFIRMACIÓN <<
-  // =======================================================
-  Future<bool> _mostrarDialogoDeSalida() async {
-    final resultado = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false, // El usuario debe presionar un botón
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Text('Confirmar Salida'),
-          content: const Text('¿Estás seguro de que quieres cerrar la sesión?'),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('NO', style: TextStyle(color: Colors.grey)),
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: const Text('SÍ, SALIR', style: TextStyle(color: Colors.white)),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-            ),
-          ],
-        );
-      },
-    );
-    // Si el usuario cierra el diálogo de otra forma, asumimos 'false'
-    return resultado ?? false;
-  }
-  // =======================================================
-
   Future<void> _logout() async {
-    // Usamos el provider para una única fuente de verdad
     final authService = context.read<AuthService>();
     await authService.logout();
-    //_syncService.dispose();
     widget.onLogout();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos una sola vez el provider de AuthService para evitar múltiples llamadas
     final authService = context.read<AuthService>();
 
     return Scaffold(
@@ -162,7 +117,6 @@ class _HomePageState extends State<HomePage> {
           },
         ),
         actions: [
-          // Indicador de estado de sincronización
           StreamBuilder<SyncStatus>(
             stream: _syncService.syncStatusStream,
             builder: (context, snapshot) {
@@ -195,7 +149,6 @@ class _HomePageState extends State<HomePage> {
             },
           ),
 
-          // Mostrar información del usuario en el AppBar
           FutureBuilder<User?>(
             future: authService.getCurrentUser(),
             builder: (context, snapshot) {
@@ -225,20 +178,16 @@ class _HomePageState extends State<HomePage> {
               return const SizedBox.shrink();
             },
           ),
+
+          // ✅ BOTÓN DE LOGOUT ACTUALIZADO CON ALERT_HELPER
           IconButton(
             icon: const Icon(Icons.logout),
-            // =======================================================
-            // >> CAMBIO PRINCIPAL: LÓGICA DE onP ressed <<
-            // =======================================================
             onPressed: () async {
-              // 1. Mostrar el diálogo y esperar la respuesta
-              final bool confirmarSalida = await _mostrarDialogoDeSalida();
-
-              // 2. Si el usuario confirma, entonces ejecutar el logout
+              final bool confirmarSalida =
+              await AlertHelper.mostrarDialogoDeSalida(context);
               if (confirmarSalida) {
                 await _logout();
               }
-              // Si no, no hacer nada.
             },
             tooltip: 'Cerrar Sesión',
           ),
@@ -259,7 +208,6 @@ class _HomePageState extends State<HomePage> {
       body: Stack(
         children: [
           _getCurrentView(),
-          // Indicador flotante de sincronización (opcional, para modo offline)
           Positioned(
             bottom: 16,
             right: 16,
@@ -292,9 +240,9 @@ class _HomePageState extends State<HomePage> {
                         size: 18,
                       ),
                       const SizedBox(width: 8),
-                      Text(
+                      const Text(
                         'Modo offline',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
