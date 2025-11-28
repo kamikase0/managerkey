@@ -165,123 +165,6 @@ class HomePageWrapper extends StatefulWidget {
   State<HomePageWrapper> createState() => _HomePageWrapperState();
 }
 
-// class _HomePageWrapperState extends State<HomePageWrapper> {
-//   bool _isServiceInitialized = false;
-//   String? _errorMessage;
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _initializeServices();
-//   }
-//
-//   Future<void> _initializeServices() async {
-//     try {
-//       final authService = Provider.of<AuthService>(context, listen: false);
-//       final syncService = Provider.of<ReporteSyncService>(
-//         context,
-//         listen: false,
-//       );
-//       final ubicacionService = Provider.of<UbicacionService>(
-//         context,
-//         listen: false,
-//       );
-//
-//       final accessToken = await authService.getAccessToken();
-//       if (accessToken != null && accessToken.isNotEmpty) {
-//         await syncService.initialize(accessToken: accessToken);
-//         print('✅ SyncService inicializado correctamente');
-//
-//         // INICIAR SERVICIO DE UBICACIÓN DESPUÉS DEL LOGIN
-//         final user = await authService.getCurrentUser();
-//         final idOperador = await authService.getIdOperador();
-//
-//         if (user != null && idOperador != null) {
-//           final userType = authService.determinarTipoUsuario(user);
-//           ubicacionService.iniciarServicioUbicacion(
-//             idOperador, // ✅ Ahora es int
-//             userType,
-//             accessToken,
-//           );
-//           print('✅ Servicio de ubicación iniciado después del login');
-//
-//           // PROBAR EL SERVICIO
-//           final stats = await ubicacionService.obtenerEstadisticas();
-//           print('📊 Estadísticas del servicio: $stats');
-//         } else {
-//           print('⚠️ Usuario o idOperador no disponible');
-//         }
-//       } else {
-//         print('⚠️ No hay accessToken disponible');
-//       }
-//
-//       if (mounted) {
-//         setState(() {
-//           _isServiceInitialized = true;
-//         });
-//       }
-//     } catch (e, stackTrace) {
-//       print('❌ Error inicializando servicios: $e');
-//       print('Stack trace: $stackTrace');
-//
-//       if (mounted) {
-//         setState(() {
-//           _isServiceInitialized = true;
-//           _errorMessage = e.toString();
-//         });
-//       }
-//     }
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//
-//     if (!_isServiceInitialized) {
-//       return const Scaffold(
-//         body: Center(
-//           child: Column(
-//             mainAxisAlignment: MainAxisAlignment.center,
-//             children: [
-//               CircularProgressIndicator(),
-//               SizedBox(height: 16),
-//               Text('Inicializando servicios...'),
-//             ],
-//           ),
-//         ),
-//       );
-//     }
-//
-//     if (_errorMessage != null) {
-//       WidgetsBinding.instance.addPostFrameCallback((_) {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(
-//             content: Text('Error inicializando: $_errorMessage'),
-//             backgroundColor: Colors.orange,
-//             duration: const Duration(seconds: 3),
-//           ),
-//         );
-//       });
-//     }
-//
-//     return HomePage(
-//       onLogout: () {
-//         final ubicacionService = Provider.of<UbicacionService>(
-//           context,
-//           listen: false,
-//         );
-//         ubicacionService.detenerServicioUbicacion();
-//
-//
-//         Navigator.of(context).pushAndRemoveUntil(
-//           MaterialPageRoute(builder: (_) => const LoginPage()),
-//           (route) => false,
-//         );
-//       },
-//     );
-//   }
-// }
-
-// EN main.dart - REEMPLAZA el _HomePageWrapperState completo
 class _HomePageWrapperState extends State<HomePageWrapper> {
   bool _isServiceInitialized = false;
   String? _errorMessage;
@@ -401,5 +284,13 @@ class _HomePageWrapperState extends State<HomePageWrapper> {
         );
       },
     );
+  }
+
+  void setupServices(){
+    final authService = AuthService();
+    final database = DatabaseService();
+    final reporteSyncService = ReporteSyncService(databaseService: database);
+
+    authService.setReporteSyncService(reporteSyncService);
   }
 }

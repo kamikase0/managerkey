@@ -1,13 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:manager_key/services/reporte_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/enviroment.dart';
 import '../models/auth_response.dart';
 import '../models/user_model.dart';
 import '../services/punto_empadronamiento_service.dart';
+import 'api_service.dart';
 
 class AuthService {
-  final PuntoEmpadronamientoService _puntoEmpadronamientoService = PuntoEmpadronamientoService();
+  final PuntoEmpadronamientoService _puntoEmpadronamientoService =
+      PuntoEmpadronamientoService();
+
+  ReporteSyncService? _reporteSyncService;
 
   static final AuthService _instance = AuthService._internal();
 
@@ -17,6 +22,7 @@ class AuthService {
 
   static const String _authKey = 'auth_tokens';
   static const String _userKey = 'user_data';
+  static const String _reportesKey = 'reportes_cargados';
 
   static const String _baseUrl = '${Enviroment.apiUrlDev}/token/';
   static const String _refreshUrl = '${Enviroment.apiUrlDev}/token/refresh/';
@@ -36,6 +42,9 @@ class AuthService {
 
       await _saveAuthData(authResponse);
 
+      //sincronizacion cargar reportes
+      await _cargarReportesDuranteLogin(authResponse.access);
+
       // ✅ NUEVO: Sincronizar puntos de empadronamiento después del login exitoso
       await _sincronizarPuntosEmpadronamiento(authResponse.access);
 
@@ -43,6 +52,11 @@ class AuthService {
     } else {
       throw Exception('Error de autenticación: ${response.body}');
     }
+  }
+
+  //Imyectar ResporteSyncService
+  void setReporteSyncService(ReporteSyncService syncService) {
+    _reporteSyncService = syncService;
   }
 
   // ✅ NUEVO: Método para sincronizar puntos de empadronamiento
@@ -64,7 +78,9 @@ class AuthService {
       if (token != null) {
         await _sincronizarPuntosEmpadronamiento(token);
       } else {
-        print('❌ No hay token disponible para sincronizar puntos de empadronamiento');
+        print(
+          '❌ No hay token disponible para sincronizar puntos de empadronamiento',
+        );
       }
     } catch (e) {
       print('❌ Error forzando sincronización: $e');
@@ -103,7 +119,8 @@ class AuthService {
   // CORREGIDO: Usar la propiedad idOperador del modelo Operador
   Future<int?> getIdOperador() async {
     final user = await getCurrentUser();
-    return user?.idOperador; // Esto usa el getter que ya existe en tu User model
+    return user
+        ?.idOperador; // Esto usa el getter que ya existe en tu User model
   }
 
   // CORREGIDO: Método para obtener datos del operador
@@ -235,18 +252,263 @@ class AuthService {
     final datosOperador = await getDatosOperador();
 
     return {
-      'user': user != null ? {
-        'id': user.id,
-        'username': user.username,
-        'email': user.email,
-        'groups': user.groups,
-        'primaryGroup': user.primaryGroup,
-      } : null,
+      'user': user != null
+          ? {
+              'id': user.id,
+              'username': user.username,
+              'email': user.email,
+              'groups': user.groups,
+              'primaryGroup': user.primaryGroup,
+            }
+          : null,
       'hasToken': accessToken != null,
       'idOperador': idOperador,
       'datosOperador': datosOperador,
       'isOperadorRural': user?.isOperadorRural ?? false,
       'isOperadorUrbano': user?.isOperadorUrbano ?? false,
     };
+  }
+
+  // ✅ NUEVO: Método para cargar reportes durante el login
+  Future<void> _cargarReportesDuranteLogin(String accessToken) async {
+    try {
+      print('🔄 Cargando reportes durante el login...');
+
+      // Obtener datos del usuario
+      final currentUser = await getCurrentUser();
+      if (currentUser == null) {
+        print('❌ No se pudo obtener datos del usuario');
+        return;
+      }
+
+      final operadorId = currentUser.operador?.idOperador;
+      if (operadorId == null) {
+        print('❌ No se pudo obtener ID del operador');
+        return;
+      }
+
+      // Crear ApiService con el token
+      final apiService = ApiService(accessToken: accessToken);
+
+      // Verificar conexión a internet
+      final tieneInternet = await _verificarConexionInternet();
+
+      List<Map<String, dynamic>> reportesCargados = [];
+
+      if (tieneInternet) {
+        print('🌐 Con internet: Cargando reportes del servidor...');
+
+        // Cargar reportes del servidor
+        final reportesRemotos = await _obtenerReportesRemotos(
+          apiService,
+          operadorId,
+        );
+        reportesCargados.addAll(
+          reportesRemotos.map((r) => {...r, "synced": true}),
+        );
+
+        // Cargar reportes locales no sincronizados
+        if (_reporteSyncService != null) {
+          final reportesLocalesNoSync =
+              await _obtenerReportesLocalesNoSincronizados(operadorId);
+          reportesCargados.addAll(reportesLocalesNoSync);
+        }
+
+        print(
+          '✅ Cargados ${reportesRemotos.length} reportes remotos durante login',
+        );
+
+        // Guardar en cache
+        await _guardarReportesEnCache(reportesCargados);
+      } else {
+        print('📱 Sin internet: Cargando reportes locales...');
+
+        // Solo cargar reportes locales
+        if (_reporteSyncService != null) {
+          reportesCargados = await _obtenerTodosReportesLocales(operadorId);
+        }
+
+        print(
+          '✅ Cargados ${reportesCargados.length} reportes locales durante login',
+        );
+      }
+
+      // Marcar que los reportes fueron cargados durante este login
+      await _marcarReportesCargados();
+    } catch (e) {
+      print('⚠️ Error cargando reportes durante login: $e');
+      // No relanzamos la excepción para no afectar el flujo de login
+    }
+  }
+
+  // ✅ NUEVO: Métodos auxiliares para carga de reportes
+  Future<bool> _verificarConexionInternet() async {
+    try {
+      // Intentar una conexión simple
+      final response = await http
+          .get(Uri.parse('${Enviroment.apiUrlDev}/'))
+          .timeout(Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _obtenerReportesRemotos(
+    ApiService apiService,
+    int operadorId,
+  ) async {
+    try {
+      return await apiService.obtenerReportesPorOperador(operadorId);
+    } catch (e) {
+      print('❌ Error obteniendo reportes remotos: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _obtenerReportesLocalesNoSincronizados(
+    int operadorId,
+  ) async {
+    try {
+      final locales = await _reporteSyncService!.getReportes();
+      return locales
+          .where(
+            (r) =>
+                r["operador"] == operadorId &&
+                (r["synced"] == 0 || r["synced"] == false),
+          )
+          .map((r) => {...r, "synced": false})
+          .toList();
+    } catch (e) {
+      print('❌ Error obteniendo reportes locales no sincronizados: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _obtenerTodosReportesLocales(
+    int operadorId,
+  ) async {
+    try {
+      final locales = await _reporteSyncService!.getReportes();
+      return locales
+          .where((r) => r["operador"] == operadorId)
+          .map((r) => {...r, "synced": r["synced"] == 1 || r["synced"] == true})
+          .toList();
+    } catch (e) {
+      print('❌ Error obteniendo todos los reportes locales: $e');
+      return [];
+    }
+  }
+
+  // ✅ NUEVO: Guardar reportes en cache
+  Future<void> _guardarReportesEnCache(
+    List<Map<String, dynamic>> reportes,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_reportesKey, json.encode(reportes));
+      print('💾 Reportes guardados en cache: ${reportes.length}');
+    } catch (e) {
+      print('❌ Error guardando reportes en cache: $e');
+    }
+  }
+
+  // ✅ NUEVO: Marcar que los reportes fueron cargados
+  Future<void> _marcarReportesCargados() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('reportes_cargados_login', true);
+    } catch (e) {
+      print('❌ Error marcando reportes como cargados: $e');
+    }
+  }
+
+  // ✅ NUEVO: Obtener reportes del cache
+  // Future<List<Map<String, dynamic>>> getReportesFromCache() async {
+  //   try {
+  //     final prefs = await SharedPreferences.getInstance();
+  //     final reportesJson = prefs.getString(_reportesKey);
+  //
+  //     if (reportesJson != null) {
+  //       final List<dynamic> reportesList = json.decode(reportesJson);
+  //       return reportesList.cast<Map<String, dynamic>>();
+  //     }
+  //     return [];
+  //   } catch (e) {
+  //     print('❌ Error obteniendo reportes del cache: $e');
+  //     return [];
+  //   }
+  // }
+
+  // ✅ NUEVO: Verificar si los reportes ya fueron cargados en este login
+  // Future<bool> areReportesCargados() async {
+  //   try {
+  //     final prefs = await SharedPreferences.getInstance();
+  //     return prefs.getBool('reportes_cargados_login') ?? false;
+  //   } catch (e) {
+  //     return false;
+  //   }
+  // }
+
+  // ✅ NUEVO: Forzar recarga de reportes (útil cuando se abre la app)
+  Future<void> recargarReportes() async {
+    try {
+      final token = await getAccessToken();
+      if (token != null) {
+        await _cargarReportesDuranteLogin(token);
+      }
+    } catch (e) {
+      print('❌ Error forzando recarga de reportes: $e');
+    }
+  }
+
+  // ✅ NUEVO: Método público para guardar reportes en cache
+  Future<void> guardarReportesEnCache(
+    List<Map<String, dynamic>> reportes,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_reportesKey, json.encode(reportes));
+      print('💾 Reportes guardados en cache: ${reportes.length}');
+    } catch (e) {
+      print('❌ Error guardando reportes en cache: $e');
+    }
+  }
+
+  // ✅ NUEVO: Método público para obtener reportes del cache
+  Future<List<Map<String, dynamic>>> getReportesFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final reportesJson = prefs.getString(_reportesKey);
+
+      if (reportesJson != null) {
+        final List<dynamic> reportesList = json.decode(reportesJson);
+        return reportesList.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error obteniendo reportes del cache: $e');
+      return [];
+    }
+  }
+
+  // ✅ NUEVO: Método para verificar si los reportes ya fueron cargados
+  Future<bool> areReportesCargados() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('reportes_cargados_login') ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ✅ NUEVO: Método para marcar reportes como cargados
+  Future<void> marcarReportesCargados() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('reportes_cargados_login', true);
+    } catch (e) {
+      print('❌ Error marcando reportes como cargados: $e');
+    }
   }
 }

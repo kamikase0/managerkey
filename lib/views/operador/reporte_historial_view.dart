@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 
@@ -17,6 +17,9 @@ class ReporteHistorialView extends StatefulWidget {
 class _ReporteHistorialViewState extends State<ReporteHistorialView> {
   List<Map<String, dynamic>> _reportes = [];
   bool _isLoading = false;
+  bool _hasInternet = true;
+  String _loadingMessage = "Cargando reportes...";
+  bool _usingCachedData = false;
 
   late AuthService _authService;
   late ApiService _apiService;
@@ -33,7 +36,23 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+
+    // ✅ PRIMERO: Intentar cargar desde cache del login
+    final cachedReportes = await _tryLoadFromCache();
+    if (cachedReportes.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _reportes = cachedReportes;
+          _usingCachedData = true;
+        });
+      }
+      print("✅ Usando reportes cargados durante el login: ${cachedReportes.length}");
+    }
+
+    setState(() {
+      _isLoading = true;
+      _loadingMessage = "Actualizando reportes...";
+    });
 
     try {
       // ================================
@@ -51,42 +70,38 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         return;
       }
 
-      // ============================================
-      // 2. OBTENER REPORTES (EN PARALELO PARA MÁS VELOCIDAD)
-      // ============================================
-      final results = await Future.wait([
-        _fetchRemoteReportes(operadorId),
-        _fetchLocalReportes(operadorId),
-      ]);
-
-      final remotos = results[0];
-      final locales = results[1];
+      // ================================
+      // 2. VERIFICAR CONEXIÓN A INTERNET
+      // ================================
+      setState(() => _loadingMessage = "Verificando conexión a internet...");
+      bool hasConnection = await _checkInternetConnection();
+      setState(() => _hasInternet = hasConnection);
 
       // ================================
-      // 3. COMBINAR Y ELIMINAR DUPLICADOS
+      // 3. CARGAR REPORTES ACTUALIZADOS
       // ================================
-      final Map<String, Map<String, dynamic>> reportesUnicos = {};
+      List<Map<String, dynamic>> reportesActualizados = [];
 
-      // Primero agregamos los reportes remotos
-      for (final reporte in remotos) {
-        final key = _generateReportKey(reporte);
-        reportesUnicos[key] = {...reporte, "synced": true};
-      }
-
-      // Agregamos los reportes locales si no existen
-      for (final reporte in locales) {
-        final key = _generateReportKey(reporte);
-        if (!reportesUnicos.containsKey(key)) {
-          reportesUnicos[key] = {...reporte, "synced": false};
+      if (hasConnection) {
+        // ✅ CON INTERNET: Cargar datos actualizados del servidor
+        setState(() => _loadingMessage = "Actualizando reportes del servidor...");
+        reportesActualizados = await _loadWithInternet(operadorId);
+        _usingCachedData = false;
+      } else {
+        // ❌ SIN INTERNET: Usar cache o cargar locales
+        if (_reportes.isEmpty) {
+          setState(() => _loadingMessage = "Cargando reportes locales...");
+          reportesActualizados = await _loadWithoutInternet(operadorId);
+        } else {
+          // Ya tenemos datos del cache, no necesitamos recargar
+          reportesActualizados = _reportes;
         }
       }
 
       // ================================
       // 4. ORDENAR Y ACTUALIZAR LA UI
       // ================================
-      final merged = reportesUnicos.values.toList();
-
-      merged.sort((a, b) {
+      reportesActualizados.sort((a, b) {
         final fa = DateTime.tryParse(a["fecha_reporte"] ?? "") ?? DateTime(1970);
         final fb = DateTime.tryParse(b["fecha_reporte"] ?? "") ?? DateTime(1970);
         return fb.compareTo(fa);
@@ -94,57 +109,184 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
 
       if (mounted) {
         setState(() {
-          _reportes = merged;
+          _reportes = reportesActualizados;
         });
       }
 
-      // Limpiar reportes locales ya sincronizados
-      await _syncService.clearSyncedLocalReportes(operadorId);
+      print("✅ Carga completada: ${reportesActualizados.length} reportes");
 
     } catch (e, stacktrace) {
       print("ERROR en _loadData: $e");
       print(stacktrace);
-      _showError("Ocurrió un error al cargar los reportes: ${e.toString()}");
+      if (_reportes.isEmpty) {
+        _showError("Ocurrió un error al cargar los reportes: ${e.toString()}");
+      } else {
+        // Tenemos datos del cache, mostramos advertencia pero no error
+        _showWarning("Usando datos en cache. Error al actualizar: ${e.toString()}");
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // MÉTODO PARA GENERAR UNA CLAVE ÚNICA PARA UN REPORTE
-  String _generateReportKey(Map<String, dynamic> reporte) {
-    final fechaBase = DateTime.tryParse(reporte['fecha_reporte'] ?? '') ?? DateTime(1970);
-    final fechaTruncada = fechaBase.toIso8601String().substring(0, 16);
-    final estacion = reporte['estacion']?.toString() ?? 'unknown';
-    final operador = reporte['operador']?.toString() ?? 'unknown';
-    return '${fechaTruncada}_${estacion}_$operador';
+  // ✅ CORREGIDO: Usar el método público correcto
+  Future<List<Map<String, dynamic>>> _tryLoadFromCache() async {
+    try {
+      return await _authService.getReportesFromCache();
+    } catch (e) {
+      print("❌ Error cargando desde cache: $e");
+      return [];
+    }
   }
 
-  // ✅ CORREGIDO: Método simplificado sin verificación compleja
+  Future<bool> _checkInternetConnection() async {
+    try {
+      setState(() => _loadingMessage = "Verificando conexión con el servidor...");
+      final result = await _apiService.checkConnection();
+      print("🔗 Estado de conexión: $result");
+      return result;
+    } catch (e) {
+      print("❌ Sin conexión a internet: $e");
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadWithInternet(int operadorId) async {
+    List<Map<String, dynamic>> reportesCombinados = [];
+
+    try {
+      // ✅ Cargar reportes actualizados del servidor
+      setState(() => _loadingMessage = "Obteniendo reportes actualizados...");
+      final reportesRemotos = await _fetchRemoteReportes(operadorId);
+      print("📡 Reportes remotos obtenidos: ${reportesRemotos.length}");
+
+      for (var i = 0; i < reportesRemotos.length; i++) {
+        print("📍 Remoto $i: ${reportesRemotos[i]['fecha_reporte']} - Operador: ${reportesRemotos[i]['operador']}");
+      }
+
+      reportesCombinados.addAll(reportesRemotos.map((r) => {...r, "synced": true}));
+
+      // ✅ Cargar reportes locales no sincronizados
+      setState(() => _loadingMessage = "Buscando reportes locales pendientes...");
+      final reportesLocalesNoSync = await _fetchLocalUnsyncedReportes(operadorId);
+      print("📱 Reportes locales no sincronizados: ${reportesLocalesNoSync.length}");
+
+      for (var i = 0; i < reportesLocalesNoSync.length; i++) {
+        print("📱 Local $i: ${reportesLocalesNoSync[i]['fecha_reporte']} - Synced: ${reportesLocalesNoSync[i]['synced']}");
+      }
+
+      reportesCombinados.addAll(reportesLocalesNoSync);
+
+      // ✅ CORREGIDO: Usar el método público correcto
+      await _authService.guardarReportesEnCache(reportesCombinados);
+
+      // ✅ CORREGIDO: Usar el método público correcto
+      _syncPendingReportesInBackground(operadorId);
+
+      print("✅ TOTAL combinados: ${reportesCombinados.length} reportes");
+
+    } catch (e) {
+      print("❌ Error en carga con internet: $e");
+      // En caso de error, mantener los datos existentes o cargar locales
+      if (reportesCombinados.isEmpty) {
+        setState(() => _loadingMessage = "Cargando reportes locales...");
+        reportesCombinados = await _fetchAllLocalReportes(operadorId);
+      }
+    }
+
+    return reportesCombinados;
+  }
+
+  // ✅ CORREGIDO: Usar el método público correcto
+  Future<void> _syncPendingReportesInBackground(int operadorId) async {
+    try {
+      print("🔄 Sincronizando reportes pendientes en segundo plano...");
+      await _syncService.syncPendingReportes(); // ✅ Ahora este método existe
+      print("✅ Sincronización en segundo plano completada");
+    } catch (e) {
+      print("❌ Error en sincronización en segundo plano: $e");
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadWithoutInternet(int operadorId) async {
+    // ❌ Solo cargar reportes locales
+    final reportesLocales = await _fetchAllLocalReportes(operadorId);
+    print("📱 Cargados ${reportesLocales.length} reportes locales (sin internet)");
+    return reportesLocales;
+  }
+
   Future<List<Map<String, dynamic>>> _fetchRemoteReportes(int operadorId) async {
     try {
-      // ✅ INTENTAR DIRECTAMENTE - si falla, capturamos la excepción
-      final remotos = await _apiService.obtenerReportesDiarios();
-
-      // Filtrar y preparar los datos
-      return remotos
-          .where((r) => r["operador"] == operadorId)
-          .map((r) => {...r})
-          .toList();
+      final remotos = await _apiService.obtenerReportesPorOperador(operadorId);
+      print("📡 Reportes remotos obtenidos: ${remotos.length}");
+      return remotos;
     } catch (e) {
       print("❌ Error obteniendo reportes remotos: $e");
       return [];
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchLocalReportes(int operadorId) async {
+  Future<List<Map<String, dynamic>>> _fetchLocalUnsyncedReportes(int operadorId) async {
     try {
       final locales = await _syncService.getReportes();
-      return locales
-          .where((r) => r["operador"] == operadorId && (r["synced"] == 0 || r["synced"] == false))
-          .map((r) => {...r})
-          .toList();
+      print("📋 Total de reportes locales en BD: ${locales.length}");
+
+      // Filtrar por operador y estado de sincronización
+      final unsynced = locales.where((r) {
+        final esMismoOperador = r["operador"] == operadorId;
+        final noSincronizado = (r["synced"] == 0 || r["synced"] == false);
+        final resultado = esMismoOperador && noSincronizado;
+
+        if (resultado) {
+          print("🎯 Reporte local no sincronizado encontrado:");
+          print("   - Fecha: ${r['fecha_reporte']}");
+          print("   - Operador: ${r['operador']}");
+          print("   - Synced: ${r['synced']}");
+        }
+
+        return resultado;
+      }).map((r) {
+        // Crear una copia limpia del reporte
+        final reporteLimpio = Map<String, dynamic>.from(r);
+        // Asegurar que tenga el campo 'synced' como false
+        reporteLimpio['synced'] = false;
+        return reporteLimpio;
+      }).toList();
+
+      print("📱 Reportes locales no sincronizados filtrados: ${unsynced.length}");
+      return unsynced;
     } catch (e) {
-      print("❌ Error obteniendo reportes locales: $e");
+      print("❌ Error obteniendo reportes locales no sincronizados: $e");
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAllLocalReportes(int operadorId) async {
+    try {
+      final locales = await _syncService.getReportes();
+      print("📋 Total de reportes locales en BD: ${locales.length}");
+
+      final allLocal = locales.where((r) {
+        final esMismoOperador = r["operador"] == operadorId;
+        if (esMismoOperador) {
+          print("📱 Reporte local encontrado:");
+          print("   - Fecha: ${r['fecha_reporte']}");
+          print("   - Operador: ${r['operador']}");
+          print("   - Synced: ${r['synced']}");
+        }
+        return esMismoOperador;
+      }).map((r) {
+        // Crear una copia limpia
+        final reporteLimpio = Map<String, dynamic>.from(r);
+        // Normalizar el campo synced
+        reporteLimpio['synced'] = (r["synced"] == 1 || r["synced"] == true);
+        return reporteLimpio;
+      }).toList();
+
+      print("📱 Todos los reportes locales filtrados: ${allLocal.length}");
+      return allLocal;
+    } catch (e) {
+      print("❌ Error obteniendo todos los reportes locales: $e");
       return [];
     }
   }
@@ -161,6 +303,18 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     }
   }
 
+  void _showWarning(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -170,32 +324,83 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         elevation: 2,
+        actions: [
+          // Indicador de estado de conexión
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Icon(
+              _hasInternet ? Icons.wifi : Icons.wifi_off,
+              color: _hasInternet ? Colors.green : Colors.orange,
+            ),
+          ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text("Cargando reportes...", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      )
-          : _reportes.isEmpty
-          ? _buildEmptyState()
-          : RefreshIndicator(
-        onRefresh: _loadData,
-        child: ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: _reportes.length,
-          itemBuilder: (context, index) {
-            return _buildReporteCard(
-              reporte: _reportes[index],
-              index: index + 1,
-            );
-          },
-        ),
+      body: Column(
+        children: [
+          // Banner de estado de conexión
+          if (!_hasInternet)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: Colors.orange.shade50,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.wifi_off, size: 16, color: Colors.orange.shade700),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Modo sin conexión - Mostrando reportes locales",
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Banner de datos en cache
+          if (_usingCachedData && _hasInternet)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: Colors.blue.shade50,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.cached, size: 16, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Mostrando datos cargados durante el login",
+                    style: TextStyle(
+                      color: Colors.blue.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _reportes.isEmpty
+                ? _buildEmptyState()
+                : RefreshIndicator(
+              onRefresh: _loadData,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _reportes.length,
+                itemBuilder: (context, index) {
+                  return _buildReporteCard(
+                    reporte: _reportes[index],
+                    index: index + 1,
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _isLoading ? null : _loadData,
@@ -206,21 +411,53 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            _loadingMessage,
+            style: const TextStyle(color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          if (!_hasInternet)
+            Text(
+              "Sin conexión a internet",
+              style: TextStyle(
+                color: Colors.orange.shade700,
+                fontSize: 12,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.assignment_outlined, size: 80, color: Colors.grey.shade400),
+          Icon(
+            _hasInternet ? Icons.assignment_outlined : Icons.assignment_late_outlined,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
           const SizedBox(height: 16),
-          const Text(
-            "No hay reportes",
-            style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500),
+          Text(
+            _hasInternet ? "No hay reportes" : "No hay reportes locales",
+            style: const TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 8),
-          const Text(
-            "Los reportes aparecerán aquí cuando los generes",
-            style: TextStyle(fontSize: 14, color: Colors.grey),
+          Text(
+            _hasInternet
+                ? "Los reportes aparecerán aquí cuando los generes"
+                : "Conectate a internet para ver todos los reportes",
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
@@ -245,6 +482,8 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     final contadorFinalR = reporte['contador_final_r']?.toString() ?? '0';
     final contadorInicialC = reporte['contador_inicial_c']?.toString() ?? '0';
     final contadorFinalC = reporte['contador_final_c']?.toString() ?? '0';
+    final registroR = reporte['registro_r']?.toString() ?? '0';
+    final registroC = reporte['registro_c']?.toString() ?? '0';
 
     return Card(
       elevation: 2,
@@ -271,13 +510,24 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
                     color: sincronizado ? Colors.green : Colors.orange,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    sincronizado ? "ENVIADO" : "LOCAL",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        sincronizado ? Icons.cloud_done : Icons.phone_iphone,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        sincronizado ? "ENVIADO" : "LOCAL",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -286,18 +536,32 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
 
             // Información del reporte
             _buildInfoRow("Estación", estacion),
-            _buildInfoRow("Contador R", "Inicial: $contadorInicialR | Final: $contadorFinalR"),
-            _buildInfoRow("Contador C", "Inicial: $contadorInicialC | Final: $contadorFinalC"),
+            _buildInfoRow("Registros R", "$registroR (Inicial: $contadorInicialR | Final: $contadorFinalR)"),
+            _buildInfoRow("Registros C", "$registroC (Inicial: $contadorInicialC | Final: $contadorFinalC)"),
             const SizedBox(height: 8),
 
-            // Fecha
-            Text(
-              "Fecha: ${_formatearFecha(fecha)}",
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-              ),
+            // Fecha y estado
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Fecha: ${_formatearFecha(fecha)}",
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+                if (!sincronizado && _hasInternet)
+                  Text(
+                    "Pendiente de envío",
+                    style: TextStyle(
+                      color: Colors.orange.shade700,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -312,7 +576,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(
               "$label:",
               style: const TextStyle(

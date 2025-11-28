@@ -20,9 +20,8 @@ class ReporteSyncService {
   String? _accessToken;
   ApiService? _apiService;
 
-  ReporteSyncService({
-    required DatabaseService databaseService,
-  }) : _databaseService = databaseService;
+  ReporteSyncService({required DatabaseService databaseService})
+    : _databaseService = databaseService;
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
@@ -35,8 +34,9 @@ class ReporteSyncService {
   }
 
   void _setupConnectivityListener() {
-    _connectivitySubscription = _connectivity.onConnectivityChanged
-        .listen((ConnectivityResult result) {
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
+      ConnectivityResult result,
+    ) {
       if (result != ConnectivityResult.none) {
         _performSync();
       }
@@ -50,7 +50,9 @@ class ReporteSyncService {
   }
 
   /// Guardar reporte (online o offline)
-  Future<Map<String, dynamic>> saveReporte(Map<String, dynamic> reporteData) async {
+  Future<Map<String, dynamic>> saveReporte(
+    Map<String, dynamic> reporteData,
+  ) async {
     try {
       final isOnline = await _isConnected();
 
@@ -65,22 +67,23 @@ class ReporteSyncService {
   }
 
   Future<Map<String, dynamic>> _sendReporteToServer(
-      Map<String, dynamic> reporteData,
-      ) async {
+    Map<String, dynamic> reporteData,
+  ) async {
     try {
-      _syncStatusController.add(SyncStatus(
-        isSyncing: true,
-        message: 'Enviando reporte al servidor...',
-      ));
+      _syncStatusController.add(
+        SyncStatus(isSyncing: true, message: 'Enviando reporte al servidor...'),
+      );
 
       final response = await _apiService!.enviarReporteDiario(reporteData);
 
       if (response['success'] == true) {
-        _syncStatusController.add(SyncStatus(
-          isSyncing: false,
-          message: 'Reporte enviado exitosamente',
-          success: true,
-        ));
+        _syncStatusController.add(
+          SyncStatus(
+            isSyncing: false,
+            message: 'Reporte enviado exitosamente',
+            success: true,
+          ),
+        );
 
         return {
           'success': true,
@@ -98,24 +101,28 @@ class ReporteSyncService {
   }
 
   Future<Map<String, dynamic>> _saveReporteLocally(
-      Map<String, dynamic> reporteData,
-      ) async {
+    Map<String, dynamic> reporteData,
+  ) async {
     try {
       final id = await _databaseService.insertReporte({
         ...reporteData,
         'synced': 0,
       });
 
-      _syncStatusController.add(SyncStatus(
-        isSyncing: false,
-        message: 'Reporte guardado localmente. Se sincronizará cuando haya conexión.',
-        success: true,
-        offlineMode: true,
-      ));
+      _syncStatusController.add(
+        SyncStatus(
+          isSyncing: false,
+          message:
+              'Reporte guardado localmente. Se sincronizará cuando haya conexión.',
+          success: true,
+          offlineMode: true,
+        ),
+      );
 
       return {
         'success': true,
-        'message': 'Reporte guardado localmente. Se sincronizará cuando haya conexión.',
+        'message':
+            'Reporte guardado localmente. Se sincronizará cuando haya conexión.',
         'local_id': id,
         'saved_locally': true,
       };
@@ -134,18 +141,23 @@ class ReporteSyncService {
       final isOnline = await _isConnected();
 
       if (!isOnline) {
-        _syncStatusController.add(SyncStatus(
-          isSyncing: false,
-          message: 'Sin conexión. Los reportes se sincronizarán cuando haya red.',
-          offlineMode: true,
-        ));
+        _syncStatusController.add(
+          SyncStatus(
+            isSyncing: false,
+            message:
+                'Sin conexión. Los reportes se sincronizarán cuando haya red.',
+            offlineMode: true,
+          ),
+        );
         return;
       }
 
-      _syncStatusController.add(SyncStatus(
-        isSyncing: true,
-        message: 'Sincronizando reportes pendientes...',
-      ));
+      _syncStatusController.add(
+        SyncStatus(
+          isSyncing: true,
+          message: 'Sincronizando reportes pendientes...',
+        ),
+      );
 
       // Sincronizar reportes diarios
       final reportesPendientes = await _databaseService.getUnsyncedReportes();
@@ -163,7 +175,8 @@ class ReporteSyncService {
       }
 
       // Sincronizar registros de despliegue
-      final registrosDesplieguePendientes = await _databaseService.obtenerRegistrosDespliegueNoSincronizados();
+      final registrosDesplieguePendientes = await _databaseService
+          .obtenerRegistrosDespliegueNoSincronizados();
       for (final registro in registrosDesplieguePendientes) {
         try {
           await _syncRegistroDespliegue(registro);
@@ -178,19 +191,23 @@ class ReporteSyncService {
           ? 'Se sincronizaron $syncedCount registros. $failedCount fallaron.'
           : 'Se sincronizaron $syncedCount registros exitosamente.';
 
-      _syncStatusController.add(SyncStatus(
-        isSyncing: false,
-        message: message,
-        success: failedCount == 0,
-        syncedCount: syncedCount,
-      ));
+      _syncStatusController.add(
+        SyncStatus(
+          isSyncing: false,
+          message: message,
+          success: failedCount == 0,
+          syncedCount: syncedCount,
+        ),
+      );
     } catch (e) {
       print('Error durante la sincronización: $e');
-      _syncStatusController.add(SyncStatus(
-        isSyncing: false,
-        message: 'Error durante la sincronización: $e',
-        success: false,
-      ));
+      _syncStatusController.add(
+        SyncStatus(
+          isSyncing: false,
+          message: 'Error durante la sincronización: $e',
+          success: false,
+        ),
+      );
     } finally {
       _isSyncing = false;
     }
@@ -198,8 +215,9 @@ class ReporteSyncService {
 
   Future<void> _syncReporte(Map<String, dynamic> reporte) async {
     final dataToSend = Map<String, dynamic>.from(reporte)
-      ..removeWhere((key, value) =>
-          ['id', 'synced', 'updated_at'].contains(key));
+      ..removeWhere(
+        (key, value) => ['id', 'synced', 'updated_at'].contains(key),
+      );
 
     if (dataToSend.containsKey('contador_c')) {
       dataToSend['registro_c'] = dataToSend['contador_c'];
@@ -255,26 +273,33 @@ class ReporteSyncService {
   //   }
   // }
 
-
   Future<Map<String, dynamic>> _sendReporteGeolocalizacionToServer({
     required Map<String, dynamic> reporteData,
     required Map<String, dynamic> despliegueData,
   }) async {
     try {
-      _syncStatusController.add(SyncStatus(
-        isSyncing: true,
-        message: 'Enviando reporte con geolocalización...',
-      ));
+      _syncStatusController.add(
+        SyncStatus(
+          isSyncing: true,
+          message: 'Enviando reporte con geolocalización...',
+        ),
+      );
 
-      final reporteResponse = await _apiService!.enviarReporteDiario(reporteData);
-      final despliegueEnviado = await _apiService!.enviarRegistroDespliegue(despliegueData);
+      final reporteResponse = await _apiService!.enviarReporteDiario(
+        reporteData,
+      );
+      final despliegueEnviado = await _apiService!.enviarRegistroDespliegue(
+        despliegueData,
+      );
 
       if (reporteResponse['success'] == true && despliegueEnviado == true) {
-        _syncStatusController.add(SyncStatus(
-          isSyncing: false,
-          message: 'Reporte y geolocalización enviados exitosamente',
-          success: true,
-        ));
+        _syncStatusController.add(
+          SyncStatus(
+            isSyncing: false,
+            message: 'Reporte y geolocalización enviados exitosamente',
+            success: true,
+          ),
+        );
 
         return {
           'success': true,
@@ -330,25 +355,33 @@ class ReporteSyncService {
         centroEmpadronamiento: despliegueData['centroEmpadronamiento'],
       );
 
-      final despliegueId = await _databaseService.insertRegistroDespliegue(registroDespliegue);
+      final despliegueId = await _databaseService.insertRegistroDespliegue(
+        registroDespliegue,
+      );
 
-      _syncStatusController.add(SyncStatus(
-        isSyncing: false,
-        message: 'Reporte y geolocalización guardados localmente. Se sincronizarán cuando haya conexión.',
-        success: true,
-        offlineMode: true,
-      ));
+      _syncStatusController.add(
+        SyncStatus(
+          isSyncing: false,
+          message:
+              'Reporte y geolocalización guardados localmente. Se sincronizarán cuando haya conexión.',
+          success: true,
+          offlineMode: true,
+        ),
+      );
 
       return {
         'success': true,
-        'message': 'Reporte y geolocalización guardados localmente. Se sincronizarán cuando haya conexión.',
+        'message':
+            'Reporte y geolocalización guardados localmente. Se sincronizarán cuando haya conexión.',
         'local_reporte_id': reporteId,
         'local_despliegue_id': despliegueId,
         'saved_locally': true,
       };
     } catch (e) {
       print('Error al guardar reporte con geolocalización localmente: $e');
-      throw Exception('Error al guardar reporte con geolocalización localmente: $e');
+      throw Exception(
+        'Error al guardar reporte con geolocalización localmente: $e',
+      );
     }
   }
 
@@ -387,17 +420,23 @@ class ReporteSyncService {
   /// Elimina de la base de datos local todos los reportes de un operador específico
   Future<void> clearSyncedLocalReportes(int operadorId) async {
     try {
-      final count = await _databaseService.deleteSyncedReportesByOperador(operadorId);
+      final count = await _databaseService.deleteSyncedReportesByOperador(
+        operadorId,
+      );
       if (count > 0) {
-        print('🧹 Limpieza completada: Se eliminaron $count reportes locales ya sincronizados para el operador $operadorId.');
+        print(
+          '🧹 Limpieza completada: Se eliminaron $count reportes locales ya sincronizados para el operador $operadorId.',
+        );
       }
     } catch (e) {
-      print('❌ Error durante la limpieza de reportes locales sincronizados: $e');
+      print(
+        '❌ Error durante la limpieza de reportes locales sincronizados: $e',
+      );
     }
   }
 
   // ✅ MÉTODO ACTUALIZADO: saveReporteGeolocalizacion
-// Busca este método en reporte_sync_service.dart y reemplázalo
+  // Busca este método en reporte_sync_service.dart y reemplázalo
 
   Future<Map<String, dynamic>> saveReporteGeolocalizacion({
     required Map<String, dynamic> reporteData,
@@ -443,7 +482,10 @@ class ReporteSyncService {
           'centro_empadronamiento': reporteData['centro_empadronamiento'],
 
           // ✅ NUEVO: Agregar fecha_registro (hora actual)
-          'fecha_registro': DateTime.now().toLocal().toIso8601String().replaceAll('Z', ''),
+          'fecha_registro': DateTime.now()
+              .toLocal()
+              .toIso8601String()
+              .replaceAll('Z', ''),
         };
 
         print('📦 JSON para API: $jsonReporte');
@@ -451,14 +493,14 @@ class ReporteSyncService {
         try {
           final response = await http
               .post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $accessToken',
-            },
-            body: jsonEncode(jsonReporte),
-          )
+                Uri.parse(url),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': 'Bearer $accessToken',
+                },
+                body: jsonEncode(jsonReporte),
+              )
               .timeout(const Duration(seconds: 30));
 
           print('📥 Status Code: ${response.statusCode}');
@@ -468,7 +510,8 @@ class ReporteSyncService {
             print('✅ Reporte enviado exitosamente al servidor');
 
             // ✅ OPCIONAL: También enviar despliegue si es necesario
-            if (despliegueData['latitud'] != null && despliegueData['longitud'] != null) {
+            if (despliegueData['latitud'] != null &&
+                despliegueData['longitud'] != null) {
               await _enviarDespliegueReporte(despliegueData, accessToken);
             }
 
@@ -524,8 +567,10 @@ class ReporteSyncService {
     }
   }
 
-// ✅ NUEVO MÉTODO: Guardar reporte localmente
-  Future<void> _guardarReporteLocalmente(Map<String, dynamic> reporteData) async {
+  // ✅ NUEVO MÉTODO: Guardar reporte localmente
+  Future<void> _guardarReporteLocalmente(
+    Map<String, dynamic> reporteData,
+  ) async {
     try {
       final db = await DatabaseService().database;
 
@@ -561,11 +606,11 @@ class ReporteSyncService {
     }
   }
 
-// ✅ NUEVO MÉTODO: Enviar despliegue (ubicación) del reporte
+  // ✅ NUEVO MÉTODO: Enviar despliegue (ubicación) del reporte
   Future<void> _enviarDespliegueReporte(
-      Map<String, dynamic> despliegueData,
-      String accessToken,
-      ) async {
+    Map<String, dynamic> despliegueData,
+    String accessToken,
+  ) async {
     try {
       final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
 
@@ -587,14 +632,14 @@ class ReporteSyncService {
 
       final response = await http
           .post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode(jsonDespliegue),
-      )
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode(jsonDespliegue),
+          )
           .timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -614,7 +659,9 @@ class ReporteSyncService {
     try {
       final result = await _connectivity.checkConnectivity();
       final tieneConexion = result != ConnectivityResult.none;
-      print('🌐 Verificación de conexión: ${tieneConexion ? "CONECTADO" : "SIN CONEXIÓN"}');
+      print(
+        '🌐 Verificación de conexión: ${tieneConexion ? "CONECTADO" : "SIN CONEXIÓN"}',
+      );
       return tieneConexion;
     } catch (e) {
       print('❌ Error verificando conexión: $e');
@@ -626,7 +673,61 @@ class ReporteSyncService {
   // Future<bool> _isConnected() async {
   //   return await verificarConexion();
   // }
+  /// ✅ NUEVO: Sincronizar reportes pendientes (método público)
+  Future<void> syncPendingReportes() async {
+    if (_isSyncing || _apiService == null) return;
 
+    try {
+      _isSyncing = true;
+      final isOnline = await _isConnected();
+
+      if (!isOnline) {
+        print('📡 Sin conexión. No se pueden sincronizar reportes pendientes.');
+        return;
+      }
+
+      print('🔄 Sincronizando reportes pendientes...');
+
+      // Sincronizar reportes diarios
+      final reportesPendientes = await _databaseService.getUnsyncedReportes();
+      int syncedCount = 0;
+      int failedCount = 0;
+
+      for (final reporte in reportesPendientes) {
+        try {
+          await _syncReporte(reporte);
+          syncedCount++;
+        } catch (e) {
+          print('❌ Error sincronizando reporte ${reporte['id']}: $e');
+          failedCount++;
+        }
+      }
+
+      // Sincronizar registros de despliegue
+      final registrosDesplieguePendientes = await _databaseService
+          .obtenerRegistrosDespliegueNoSincronizados();
+      for (final registro in registrosDesplieguePendientes) {
+        try {
+          await _syncRegistroDespliegue(registro);
+          syncedCount++;
+        } catch (e) {
+          print('❌ Error sincronizando registro despliegue ${registro.id}: $e');
+          failedCount++;
+        }
+      }
+
+      if (syncedCount > 0) {
+        print('✅ Se sincronizaron $syncedCount registros exitosamente');
+      }
+      if (failedCount > 0) {
+        print('⚠️ $failedCount registros fallaron al sincronizar');
+      }
+    } catch (e) {
+      print('❌ Error durante la sincronización: $e');
+    } finally {
+      _isSyncing = false;
+    }
+  }
 }
 
 class SyncStatus {

@@ -35,7 +35,7 @@ class _LoginPageState extends State<LoginPage> {
       },
       'coordinador': {
         'email': 'coordinador@test.com',
-        'username': 'ana_coordinadora',
+        'username': 'test_coordinador',
         'group': 'coordinador',
       },
     };
