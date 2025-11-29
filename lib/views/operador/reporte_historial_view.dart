@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 
@@ -121,7 +121,6 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
       if (_reportes.isEmpty) {
         _showError("Ocurrió un error al cargar los reportes: ${e.toString()}");
       } else {
-        // Tenemos datos del cache, mostramos advertencia pero no error
         _showWarning("Usando datos en cache. Error al actualizar: ${e.toString()}");
       }
     } finally {
@@ -129,7 +128,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     }
   }
 
-  // ✅ CORREGIDO: Usar el método público correcto
+  /// ✅ CORREGIDO: Obtener reportes del cache
   Future<List<Map<String, dynamic>>> _tryLoadFromCache() async {
     try {
       return await _authService.getReportesFromCache();
@@ -139,6 +138,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     }
   }
 
+  /// ✅ CORREGIDO: Verificar conexión
   Future<bool> _checkInternetConnection() async {
     try {
       setState(() => _loadingMessage = "Verificando conexión con el servidor...");
@@ -151,6 +151,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     }
   }
 
+  /// ✅ CORREGIDO: Cargar con conexión a internet
   Future<List<Map<String, dynamic>>> _loadWithInternet(int operadorId) async {
     List<Map<String, dynamic>> reportesCombinados = [];
 
@@ -177,10 +178,10 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
 
       reportesCombinados.addAll(reportesLocalesNoSync);
 
-      // ✅ CORREGIDO: Usar el método público correcto
+      // ✅ Guardar reportes en cache
       await _authService.guardarReportesEnCache(reportesCombinados);
 
-      // ✅ CORREGIDO: Usar el método público correcto
+      // ✅ CORREGIDO: Sincronizar pendientes en segundo plano
       _syncPendingReportesInBackground(operadorId);
 
       print("✅ TOTAL combinados: ${reportesCombinados.length} reportes");
@@ -197,24 +198,35 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     return reportesCombinados;
   }
 
-  // ✅ CORREGIDO: Usar el método público correcto
+  /// ✅ CORREGIDO: Sincronizar reportes pendientes en segundo plano
   Future<void> _syncPendingReportesInBackground(int operadorId) async {
     try {
       print("🔄 Sincronizando reportes pendientes en segundo plano...");
-      await _syncService.syncPendingReportes(); // ✅ Ahora este método existe
-      print("✅ Sincronización en segundo plano completada");
+
+      // ✅ NUEVO: Obtener el token de autenticación
+      final accessToken = await _authService.getAccessToken();
+      if (accessToken != null) {
+        final apiService = ApiService(accessToken: accessToken);
+
+        // ✅ CORREGIDO: Usar sincronizarReportes en lugar de syncPendingReportes
+        await _syncService.sincronizarReportes(apiService: apiService);
+        print("✅ Sincronización en segundo plano completada");
+      } else {
+        print("⚠️ No hay token de autenticación disponible para sincronizar");
+      }
     } catch (e) {
       print("❌ Error en sincronización en segundo plano: $e");
     }
   }
 
+  /// ✅ Cargar sin conexión
   Future<List<Map<String, dynamic>>> _loadWithoutInternet(int operadorId) async {
-    // ❌ Solo cargar reportes locales
     final reportesLocales = await _fetchAllLocalReportes(operadorId);
     print("📱 Cargados ${reportesLocales.length} reportes locales (sin internet)");
     return reportesLocales;
   }
 
+  /// ✅ Obtener reportes remotos
   Future<List<Map<String, dynamic>>> _fetchRemoteReportes(int operadorId) async {
     try {
       final remotos = await _apiService.obtenerReportesPorOperador(operadorId);
@@ -226,29 +238,27 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     }
   }
 
+  /// ✅ Obtener reportes locales no sincronizados
   Future<List<Map<String, dynamic>>> _fetchLocalUnsyncedReportes(int operadorId) async {
     try {
       final locales = await _syncService.getReportes();
       print("📋 Total de reportes locales en BD: ${locales.length}");
 
-      // Filtrar por operador y estado de sincronización
       final unsynced = locales.where((r) {
         final esMismoOperador = r["operador"] == operadorId;
-        final noSincronizado = (r["synced"] == 0 || r["synced"] == false);
+        final noSincronizado = (r["sincronizado"] == 0 || r["sincronizado"] == false);
         final resultado = esMismoOperador && noSincronizado;
 
         if (resultado) {
           print("🎯 Reporte local no sincronizado encontrado:");
           print("   - Fecha: ${r['fecha_reporte']}");
           print("   - Operador: ${r['operador']}");
-          print("   - Synced: ${r['synced']}");
+          print("   - Sincronizado: ${r['sincronizado']}");
         }
 
         return resultado;
       }).map((r) {
-        // Crear una copia limpia del reporte
         final reporteLimpio = Map<String, dynamic>.from(r);
-        // Asegurar que tenga el campo 'synced' como false
         reporteLimpio['synced'] = false;
         return reporteLimpio;
       }).toList();
@@ -261,6 +271,7 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
     }
   }
 
+  /// ✅ Obtener todos los reportes locales
   Future<List<Map<String, dynamic>>> _fetchAllLocalReportes(int operadorId) async {
     try {
       final locales = await _syncService.getReportes();
@@ -272,14 +283,12 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
           print("📱 Reporte local encontrado:");
           print("   - Fecha: ${r['fecha_reporte']}");
           print("   - Operador: ${r['operador']}");
-          print("   - Synced: ${r['synced']}");
+          print("   - Sincronizado: ${r['sincronizado']}");
         }
         return esMismoOperador;
       }).map((r) {
-        // Crear una copia limpia
         final reporteLimpio = Map<String, dynamic>.from(r);
-        // Normalizar el campo synced
-        reporteLimpio['synced'] = (r["synced"] == 1 || r["synced"] == true);
+        reporteLimpio['synced'] = (r["sincronizado"] == 1 || r["sincronizado"] == true);
         return reporteLimpio;
       }).toList();
 
@@ -325,7 +334,6 @@ class _ReporteHistorialViewState extends State<ReporteHistorialView> {
         foregroundColor: Colors.white,
         elevation: 2,
         actions: [
-          // Indicador de estado de conexión
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Icon(

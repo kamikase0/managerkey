@@ -1,122 +1,81 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:manager_key/views/home_page.dart';
+import 'package:manager_key/views/login_page.dart';
+import 'package:manager_key/views/operador/reporte_historial_view.dart';
 import 'package:provider/provider.dart';
-import 'services/database_service.dart';
-import 'services/api_service.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import 'firebase_options.dart';
 import 'services/reporte_sync_service.dart';
 import 'services/auth_service.dart';
-import 'services/connectivity_service.dart';
-import 'services/location_service.dart';
-import 'services/ubicacion_service.dart';
-import 'views/login_page.dart';
-import 'views/home_page.dart';
-import 'widgets/connnectivity_handler.dart';
+import 'services/api_service.dart';
+import 'views/operador/reporte_diario_view.dart';
+
+// import 'pages/login_page.dart';
+// import 'pages/home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializa servicios globales
-  final dbService = DatabaseService();
-  final authService = AuthService();
-  final connectivityService = ConnectivityService();
-  final locationService = LocationService();
-  final ubicacionService = UbicacionService();
-
-  // Inicializa la base de datos
-  await dbService.database;
-
-  // INICIALIZAR UbicacionService
-  ubicacionService.initialize(
-    locationService: locationService,
-    connectivityService: connectivityService,
-    databaseService: dbService,
+  // Inicializar Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // VERIFICAR SI HAY SESIÓN ACTIVA
-  final isAuthenticated = await authService.isAuthenticated();
-  if (isAuthenticated) {
-    final user = await authService.getCurrentUser();
-    final accessToken = await authService.getAccessToken();
-    final idOperador = await authService.getIdOperador();
+  // Inicializar base de datos SQLite
+  final database = await openDatabase(
+    join(await getDatabasesPath(), 'manager_key.db'),
+    version: 1,
+    onCreate: (db, version) async {
+      print('📝 Base de datos SQLite creada');
+    },
+  );
 
-    // DEBUG: Mostrar información del usuario
-    final userInfo = await authService.getUserInfo();
-    print('DEBUG: Información del usuario: $userInfo');
+  // Inicializar ReporteSyncService
+  final reporteSyncService = ReporteSyncService();
+  await reporteSyncService.initializeDatabase(database);
 
-    if (user != null && accessToken != null && idOperador != null) {
-      final userType = authService.determinarTipoUsuario(user);
-      ubicacionService.iniciarServicioUbicacion(
-        idOperador, // ✅ Ahora es int, no int?
-        userType,
-        accessToken,
-      );
-      print('DEBUG: ✅ Servicio de ubicación reiniciado al iniciar app');
-      print('DEBUG: ID Operador: $idOperador, Tipo: $userType');
-    } else {
-      print('DEBUG: ❌ Faltan datos para iniciar servicio de ubicación');
-      print(
-        'DEBUG: User: ${user != null}, Token: ${accessToken != null}, IdOperador: $idOperador',
-      );
-    }
-  } else {
-    print('DEBUG: ℹ️ No hay sesión activa al iniciar app');
-  }
+  // Inyectar ReporteSyncService en AuthService
+  AuthService().setReporteSyncService(reporteSyncService);
 
   runApp(
-    MyApp(
-      dbService: dbService,
-      authService: authService,
-      connectivityService: connectivityService,
-      locationService: locationService,
-      ubicacionService: ubicacionService,
+    MultiProvider(
+      providers: [
+        Provider<ReporteSyncService>(create: (_) => reporteSyncService),
+        Provider<AuthService>(create: (_) => AuthService()),
+        // ✅ NUEVO: Agregar ApiService a Provider
+        Provider<ApiService?>(
+          create: (_) => null,
+          lazy: false,
+        ),
+      ],
+      child: const MyApp(),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  final DatabaseService dbService;
-  final AuthService authService;
-  final ConnectivityService connectivityService;
-  final LocationService locationService;
-  final UbicacionService ubicacionService;
-
-  const MyApp({
-    super.key,
-    required this.dbService,
-    required this.authService,
-    required this.connectivityService,
-    required this.locationService,
-    required this.ubicacionService,
-  });
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        Provider<AuthService>.value(value: authService),
-        Provider<DatabaseService>.value(value: dbService),
-        Provider<ConnectivityService>.value(value: connectivityService),
-        Provider<LocationService>.value(value: locationService),
-        Provider<UbicacionService>.value(value: ubicacionService),
-        Provider<ApiService>(
-          create: (context) => ApiService(authService: authService),
-        ),
-        Provider<ReporteSyncService>(
-          create: (context) => ReporteSyncService(databaseService: dbService),
-        ),
-      ],
-      child: MaterialApp(
-        title: 'Sistema de Reportes Rural',
-        theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: false),
-        home: const AuthWrapper(),
-        routes: {'/login': (context) => const LoginPage()},
+    return MaterialApp(
+      title: 'Manager Key',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
       ),
+      home: const AuthWrapper(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-// ... (AuthWrapper y HomePageWrapper se mantienen igual)
+// Widget wrapper para manejar autenticación
+// Widget wrapper para manejar autenticación
 class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
+  const AuthWrapper({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -126,29 +85,17 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Verificando autenticación...'),
-                ],
-              ),
+              child: CircularProgressIndicator(),
             ),
           );
         }
 
-        if (snapshot.hasError) {
-          print('Error en autenticación: ${snapshot.error}');
-          return const LoginPage();
-        }
-
-        if (snapshot.hasData && snapshot.data!) {
-          return ConnectivityHandler(
-            customMessage:
-                'No se puede conectar con el servidor de reportes. '
-                'Verifica tu conexión a internet y intenta nuevamente.',
-            child: const HomePageWrapper(),
+        if (snapshot.hasData && snapshot.data == true) {
+          // ✅ CORREGIDO:
+          // 1. Se eliminó 'const'
+          // 2. Se pasó una función anónima a onLogout
+          return HomePage(
+            onLogout: () => _handleLogout(context),
           );
         }
 
@@ -156,141 +103,48 @@ class AuthWrapper extends StatelessWidget {
       },
     );
   }
+
+  // ✅ NUEVO: Manejador de logout
+  static void _handleLogout(BuildContext context) {
+    // Es una buena práctica verificar si el widget sigue montado
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const AuthWrapper()),
+          (route) => false,
+    );
+  }
 }
 
-class HomePageWrapper extends StatefulWidget {
+
+// ✅ ELIMINADO: LoginScreen innecesario
+// El login debe usar LoginPage en su lugar
+
+// ✅ ELIMINADO: MainScreen innecesario
+// El home debe usar HomePage en su lugar
+
+// ✅ ELIMINADO: SyncManagementScreen innecesario
+// Debe estar en HomePage
+
+// ✅ NUEVO: Wrapper para HomePage (era HomePageWrapper)
+// ✅ NUEVO: Wrapper para HomePage (era HomePageWrapper)
+class HomePageWrapper extends StatelessWidget {
   const HomePageWrapper({Key? key}) : super(key: key);
 
   @override
-  State<HomePageWrapper> createState() => _HomePageWrapperState();
-}
-
-class _HomePageWrapperState extends State<HomePageWrapper> {
-  bool _isServiceInitialized = false;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    print('🏠 HomePageWrapper - initState INICIADO');
-    _initializeServices();
-  }
-
-  Future<void> _initializeServices() async {
-    try {
-      print('🔧 1. Inicializando servicios...');
-
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final syncService = Provider.of<ReporteSyncService>(context, listen: false);
-      final ubicacionService = Provider.of<UbicacionService>(context, listen: false);
-
-      final accessToken = await authService.getAccessToken();
-      print('🔑 2. Access Token obtenido: ${accessToken != null ? "SI" : "NO"}');
-
-      if (accessToken != null && accessToken.isNotEmpty) {
-        print('🔄 3. Inicializando SyncService...');
-        await syncService.initialize(accessToken: accessToken);
-        print('✅ 4. SyncService inicializado correctamente');
-
-        // INICIAR SERVICIO DE UBICACIÓN DESPUÉS DEL LOGIN
-        final user = await authService.getCurrentUser();
-        final idOperador = await authService.getIdOperador();
-
-        print('👤 5. Usuario: ${user != null ? user.username : "NULL"}');
-        print('🆔 6. ID Operador: $idOperador');
-
-        if (user != null && idOperador != null) {
-          final userType = authService.determinarTipoUsuario(user);
-          print('🎯 7. Tipo de usuario: $userType');
-
-          ubicacionService.iniciarServicioUbicacion(
-            idOperador,
-            userType,
-            accessToken,
-          );
-          print('📍 8. Servicio de ubicación iniciado');
-        } else {
-          print('⚠️ 9. Usuario o idOperador no disponible');
-        }
-      } else {
-        print('❌ 10. No hay accessToken disponible');
-        throw Exception('No hay token de acceso disponible');
-      }
-
-      if (mounted) {
-        print('✅ 11. Todos los servicios inicializados - Marcando como listo');
-        setState(() {
-          _isServiceInitialized = true;
-        });
-      }
-
-    } catch (e, stackTrace) {
-      print('❌ ERROR CRÍTICO en inicialización: $e');
-      print('Stack trace: $stackTrace');
-
-      if (mounted) {
-        print('⚠️ 12. Error manejado, mostrando HomePage de todas formas');
-        setState(() {
-          _isServiceInitialized = true; // ✅ IMPORTANTE: Permitir que continúe
-          _errorMessage = e.toString();
-        });
-      }
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    print('🏠 HomePageWrapper - build ejecutado, _isServiceInitialized: $_isServiceInitialized');
-
-    if (!_isServiceInitialized) {
-      print('⏳ Mostrando loading...');
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Inicializando servicios...'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_errorMessage != null) {
-      print('⚠️ Mostrando snackbar de error: $_errorMessage');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Advertencia: $_errorMessage'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      });
-    }
-
-    print('🎉 Mostrando HomePage...');
+    // ✅ CORREGIDO:
+    // 1. Se eliminó 'const'
+    // 2. Se pasó una función anónima a onLogout
     return HomePage(
-      onLogout: () {
-        print('🚪 Ejecutando logout...');
-        final ubicacionService = Provider.of<UbicacionService>(context, listen: false);
-        ubicacionService.detenerServicioUbicacion();
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginPage()),
-              (route) => false,
-        );
-      },
+      onLogout: () => _handleLogout(context),
     );
   }
 
-  void setupServices(){
-    final authService = AuthService();
-    final database = DatabaseService();
-    final reporteSyncService = ReporteSyncService(databaseService: database);
-
-    authService.setReporteSyncService(reporteSyncService);
+  static void _handleLogout(BuildContext context) {
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const AuthWrapper()),
+          (route) => false,
+    );
   }
 }

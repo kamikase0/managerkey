@@ -366,40 +366,6 @@ class AuthService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _obtenerReportesLocalesNoSincronizados(
-    int operadorId,
-  ) async {
-    try {
-      final locales = await _reporteSyncService!.getReportes();
-      return locales
-          .where(
-            (r) =>
-                r["operador"] == operadorId &&
-                (r["synced"] == 0 || r["synced"] == false),
-          )
-          .map((r) => {...r, "synced": false})
-          .toList();
-    } catch (e) {
-      print('❌ Error obteniendo reportes locales no sincronizados: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _obtenerTodosReportesLocales(
-    int operadorId,
-  ) async {
-    try {
-      final locales = await _reporteSyncService!.getReportes();
-      return locales
-          .where((r) => r["operador"] == operadorId)
-          .map((r) => {...r, "synced": r["synced"] == 1 || r["synced"] == true})
-          .toList();
-    } catch (e) {
-      print('❌ Error obteniendo todos los reportes locales: $e');
-      return [];
-    }
-  }
-
   // ✅ NUEVO: Guardar reportes en cache
   Future<void> _guardarReportesEnCache(
     List<Map<String, dynamic>> reportes,
@@ -509,6 +475,51 @@ class AuthService {
       await prefs.setBool('reportes_cargados_login', true);
     } catch (e) {
       print('❌ Error marcando reportes como cargados: $e');
+    }
+  }
+
+  // ✅ CORREGIDO: Métodos auxiliares para carga de reportes
+  Future<List<Map<String, dynamic>>> _obtenerReportesLocalesNoSincronizados(
+      int operadorId,
+      ) async {
+    try {
+      if (_reporteSyncService == null) {
+        print('⚠️ ReporteSyncService no está inicializado');
+        return [];
+      }
+
+      final locales = await _reporteSyncService!.getReportes();
+      return locales
+          .where(
+            (r) =>
+        r["operador"] == operadorId &&
+            (r["synced"] == 0 || r["synced"] == false),
+      )
+          .map((r) => {...r, "synced": false})
+          .toList();
+    } catch (e) {
+      print('❌ Error obteniendo reportes locales no sincronizados: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _obtenerTodosReportesLocales(
+      int operadorId,
+      ) async {
+    try {
+      if (_reporteSyncService == null) {
+        print('⚠️ ReporteSyncService no está inicializado');
+        return [];
+      }
+
+      final locales = await _reporteSyncService!.getReportes();
+      return locales
+          .where((r) => r["operador"] == operadorId)
+          .map((r) => {...r, "synced": r["synced"] == 1 || r["synced"] == true})
+          .toList();
+    } catch (e) {
+      print('❌ Error obteniendo todos los reportes locales: $e');
+      return [];
     }
   }
 }

@@ -7,8 +7,9 @@ import 'package:manager_key/views/tecnico/recepcion_view.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/reporte_sync_service.dart';
+import '../services/api_service.dart';
 import '../widgets/sidebar.dart';
-import '../utils/alert_helper.dart'; // ✅ AGREGAR ESTE IMPORT
+import '../utils/alert_helper.dart';
 import 'operador_view.dart';
 import 'soporte_view.dart';
 import 'coordinador_view.dart';
@@ -29,18 +30,50 @@ class _HomePageState extends State<HomePage> {
   int? _idOperador;
   User? _currentUser;
   late ReporteSyncService _syncService;
+  late AuthService _authService;
+  late ApiService? _apiService;
+
+  // ✅ CORREGIDO: Stream único que no se recrea
+  Stream<SyncStatus>? _syncStream;
 
   @override
   void initState() {
     super.initState();
-    _syncService = context.read<ReporteSyncService>();
+    _syncService = Provider.of<ReporteSyncService>(context, listen: false);
+    _authService = Provider.of<AuthService>(context, listen: false);
+    _apiService = null;
     _loadUserData();
+    _initializeSyncService();
   }
 
+  /// ✅ CORREGIDO: Inicializar el stream una sola vez
+  void _initializeSyncStream() {
+    if (_syncStream == null) {
+      _syncStream = _syncService.syncStatusStream.asBroadcastStream();
+    }
+  }
+
+  /// ✅ CORREGIDO: Inicializar el servicio de sincronización
+  Future<void> _initializeSyncService() async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token != null) {
+        _apiService = ApiService(accessToken: token);
+        await _syncService.initialize(accessToken: token);
+        _initializeSyncStream();
+        print('✅ Servicio de sincronización inicializado en HomePage');
+      } else {
+        print('⚠️ No hay token disponible para inicializar sincronización');
+      }
+    } catch (e) {
+      print('❌ Error inicializando servicio de sincronización: $e');
+    }
+  }
+
+  /// ✅ CORREGIDO: Cargar datos del usuario
   Future<void> _loadUserData() async {
     try {
-      final authService = context.read<AuthService>();
-      final user = await authService.getCurrentUser();
+      final user = await _authService.getCurrentUser();
 
       if (user != null) {
         setState(() {
@@ -63,6 +96,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Establecer valores por defecto
   void _setDefaultValues() {
     setState(() {
       _userGroup = 'operador';
@@ -72,12 +106,12 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// ✅ CORREGIDO: Obtener la vista actual
   Widget _getCurrentView() {
     switch (_activeView) {
       case 'operador':
         return const OperadorView();
       case 'reporte_diario':
-        // return const ReporteDiarioView();
         return const ReporteDiarioView();
       case 'salida_ruta':
         return SalidaRutaView(idOperador: _idOperador ?? 0);
@@ -94,95 +128,372 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// ✅ CORREGIDO: Logout
   Future<void> _logout() async {
-    final authService = context.read<AuthService>();
-    await authService.logout();
+    await _authService.logout();
     widget.onLogout();
+  }
+
+  /// ✅ CORREGIDO: Sincronización manual
+  Future<void> _manualSync() async {
+    if (!mounted) {
+      print('⚠️ Widget desmontado, cancelando sincronización manual');
+      return;
+    }
+
+    final result = await _syncService.syncNow();
+
+    if (!mounted) {
+      print('⚠️ Widget desmontado, no se puede mostrar snackbar');
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {
+            if (mounted) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  /// ✅ CORREGIDO: Construir indicador de sincronización
+  Widget _buildSyncIndicator() {
+    if (_syncStream == null) {
+      return _buildSyncButton();
+    }
+
+    return StreamBuilder<SyncStatus>(
+      stream: _syncStream,
+      builder: (context, snapshot) {
+        final status = snapshot.data;
+
+        if (status == null || status == SyncStatus.synced) {
+          return _buildSyncButton();
+        }
+
+        if (status == SyncStatus.syncing) {
+          return _buildSyncingIndicator();
+        }
+
+        if (status == SyncStatus.pending) {
+          return _buildOfflineIndicator();
+        }
+
+        if (status == SyncStatus.error) {
+          return _buildErrorIndicator();
+        }
+
+        return _buildSyncButton();
+      },
+    );
+  }
+
+  /// Widget: Botón de sincronización normal
+  Widget _buildSyncButton() {
+    return FutureBuilder<SyncState>(
+      future: _syncService.getSyncState(),
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final hasPending = state?.hasPendingSync == true;
+        final pendingCount = (state?.pendingReports ?? 0) +
+            (state?.pendingDeployments ?? 0);
+
+        return GestureDetector(
+          onTap: _manualSync,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: hasPending ? Colors.orange.shade100 : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: hasPending ? Colors.orange : Colors.grey,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.sync,
+                  size: 16,
+                  color: hasPending ? Colors.orange : Colors.grey,
+                ),
+                if (hasPending && pendingCount > 0) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '$pendingCount',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Widget: Indicador sincronizando
+  Widget _buildSyncingIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.blue),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade700),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Sincronizando...',
+            style: TextStyle(
+              color: Colors.blue.shade700,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Widget: Indicador offline
+  Widget _buildOfflineIndicator() {
+    return GestureDetector(
+      onTap: _manualSync,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.orange),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off, size: 16, color: Colors.orange.shade700),
+            const SizedBox(width: 6),
+            Text(
+              'Offline',
+              style: TextStyle(
+                color: Colors.orange.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Widget: Indicador de error
+  Widget _buildErrorIndicator() {
+    return GestureDetector(
+      onTap: _manualSync,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.red.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.red),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error, size: 16, color: Colors.red.shade700),
+            const SizedBox(width: 6),
+            Text(
+              'Error',
+              style: TextStyle(
+                color: Colors.red.shade700,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Widget: Información del usuario
+  Widget _buildUserInfo() {
+    return FutureBuilder<User?>(
+      future: _authService.getCurrentUser(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user != null && user.groups.isNotEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  user.groups.join(', '),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                if (user.tipoOperador != null)
+                  Text(
+                    user.tipoOperador!,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.white70,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  /// ✅ CORREGIDO: Widget para el banner de estado
+  Widget _buildSyncStatusBanner() {
+    if (_syncStream == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      bottom: 16,
+      right: 16,
+      left: 16,
+      child: StreamBuilder<SyncStatus>(
+        stream: _syncStream,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData || snapshot.data == SyncStatus.synced) {
+            return const SizedBox.shrink();
+          }
+
+          final status = snapshot.data!;
+          Color backgroundColor;
+          IconData icon;
+          String text;
+
+          switch (status) {
+            case SyncStatus.syncing:
+              backgroundColor = Colors.blue.shade600;
+              icon = Icons.sync;
+              text = 'Sincronizando datos...';
+              break;
+            case SyncStatus.pending:
+              backgroundColor = Colors.orange.shade600;
+              icon = Icons.cloud_off;
+              text = 'Modo offline - Los datos se guardarán localmente';
+              break;
+            case SyncStatus.error:
+              backgroundColor = Colors.red.shade600;
+              icon = Icons.error;
+              text = 'Error de sincronización';
+              break;
+            case SyncStatus.synced:
+              backgroundColor = Colors.green.shade600;
+              icon = Icons.cloud_done;
+              text = 'Sincronizado';
+              break;
+          }
+
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (status == SyncStatus.pending)
+                  IconButton(
+                    icon: const Icon(Icons.sync, color: Colors.white, size: 18),
+                    onPressed: _manualSync,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final authService = context.read<AuthService>();
-
     return Scaffold(
       appBar: AppBar(
         title: FutureBuilder<String>(
-          future: authService.getWelcomeMessage(),
+          future: _authService.getWelcomeMessage(),
           builder: (context, snapshot) {
             final welcomeMsg = snapshot.data ?? 'Sistema de Gestión';
             return Text(
               welcomeMsg.length > 20
                   ? '${welcomeMsg.substring(0, 20)}...'
                   : welcomeMsg,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             );
           },
         ),
         actions: [
-          StreamBuilder<SyncStatus>(
-            stream: _syncService.syncStatusStream,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const SizedBox.shrink();
-              }
-
-              final status = snapshot.data!;
-              final icon = status.isSyncing
-                  ? Icons.cloud_upload
-                  : (status.success
-                  ? Icons.cloud_done
-                  : (status.offlineMode ? Icons.cloud_off : Icons.error));
-
-              final color = status.isSyncing
-                  ? Colors.amber
-                  : (status.success
-                  ? Colors.green
-                  : (status.offlineMode ? Colors.orange : Colors.red));
-
-              return Tooltip(
-                message: status.message,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Center(
-                    child: Icon(icon, color: color),
-                  ),
-                ),
-              );
-            },
-          ),
-
-          FutureBuilder<User?>(
-            future: authService.getCurrentUser(),
-            builder: (context, snapshot) {
-              final user = snapshot.data;
-              if (user != null && user.groups.isNotEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          user.groups.join(', '),
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        if (user.tipoOperador != null)
-                          Text(
-                            user.tipoOperador!,
-                            style: const TextStyle(fontSize: 10),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-
-          // ✅ BOTÓN DE LOGOUT ACTUALIZADO CON ALERT_HELPER
+          _buildSyncIndicator(),
+          const SizedBox(width: 8),
+          _buildUserInfo(),
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               final bool confirmarSalida =
               await AlertHelper.mostrarDialogoDeSalida(context);
@@ -193,6 +504,9 @@ class _HomePageState extends State<HomePage> {
             tooltip: 'Cerrar Sesión',
           ),
         ],
+        backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
+        elevation: 2,
       ),
       drawer: Sidebar(
         activeView: _activeView,
@@ -209,54 +523,15 @@ class _HomePageState extends State<HomePage> {
       body: Stack(
         children: [
           _getCurrentView(),
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: StreamBuilder<SyncStatus>(
-              stream: _syncService.syncStatusStream,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData || !snapshot.data!.offlineMode) {
-                  return const SizedBox.shrink();
-                }
-
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade600,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.cloud_off,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Modo offline',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
+          _buildSyncStatusBanner(),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _syncService.dispose();
+    super.dispose();
   }
 }

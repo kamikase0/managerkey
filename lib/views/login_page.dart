@@ -55,62 +55,18 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Future<void> _submitLogin() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
+  /// ✅ CORREGIDO: Método para verificar conexión a internet
+  Future<bool> _checkInternetConnection() async {
     try {
-      // Mostrar loading
-      AlertHelper.showLoading(
-        context: context,
-        title: 'Iniciando Sesión',
-        text: 'Verificando credenciales...',
-      );
-
-      print('🔄 Iniciando proceso de login...');
-
-      // Realizar login
-      final authResponse = await AuthService().loginWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
-
-      if (!mounted) return;
-
-      print('✅ Login exitoso, guardando token...');
-
-      // Guardar token en SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('access_token', authResponse.access);
-
-      // Cerrar loading
-      AlertHelper.closeLoading(context);
-
-      // ✅ CORRECCIÓN: Mostrar éxito y navegar después
-      _showSuccessAndNavigate();
-
-    } catch (e) {
-      if (!mounted) return;
-
-      // Cerrar loading si está abierto
-      AlertHelper.closeLoading(context);
-
-      // Manejo de errores con AlertHelper
-      _handleLoginError(e);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
     }
   }
 
+  /// ✅ CORREGIDO: Mostrar éxito y navegar
   void _showSuccessAndNavigate() {
-    // Mostrar alerta de éxito
     QuickAlert.show(
       context: context,
       type: QuickAlertType.success,
@@ -121,14 +77,15 @@ class _LoginPageState extends State<LoginPage> {
       showConfirmBtn: false,
     );
 
-    //Navegar automaticamnte despues de la alerta
-    Future.delayed(const Duration(seconds: 2),(){
-      if(mounted){
+    // Navegar automáticamente después de la alerta
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
         _navigateToHome();
       }
     });
   }
 
+  /// ✅ CORREGIDO: Navegar al Home
   void _navigateToHome() {
     print('🚀 Navegando al Home...');
     Navigator.of(context).pushAndRemoveUntil(
@@ -137,12 +94,11 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /// ✅ CORREGIDO: Manejar errores de login
   void _handleLoginError(dynamic error) {
     print('🔍 Error original: $error');
-
     String errorMessage = _getUserFriendlyErrorMessage(error);
 
-    // Usar AlertHelper para mostrar el error
     AlertHelper.showError(
       context: context,
       title: 'Error de Inicio de Sesión',
@@ -150,6 +106,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /// ✅ CORREGIDO: Obtener mensaje de error amigable
   String _getUserFriendlyErrorMessage(dynamic error) {
     print('🔍 Error original: $error');
 
@@ -184,7 +141,7 @@ class _LoginPageState extends State<LoginPage> {
       return 'Error interno del servidor. Por favor, intenta más tarde.';
     }
 
-    // Verificar si el mensaje contiene la IP del servidor (lo que quieres evitar)
+    // Verificar si el mensaje contiene URLs (evitar exposición)
     final errorString = error.toString();
     if (errorString.contains('http://') || errorString.contains('https://')) {
       return 'Error de conexión con el servidor. Verifica tu conexión a internet.';
@@ -194,18 +151,7 @@ class _LoginPageState extends State<LoginPage> {
     return 'Error al iniciar sesión. Verifica tus credenciales y conexión.';
   }
 
-  // Método para verificar conexión antes de intentar login
-
-  Future<bool> _checkInternetConnection() async {
-    try {
-      final result = await InternetAddress.lookup('google.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } on SocketException catch (_) {
-      return false;
-    }
-  }
-
-  // Método mejorado con verificación de conexión
+  /// ✅ CORREGIDO: Método principal de login con verificación
   Future<void> _submitLoginWithConnectionCheck() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -221,6 +167,60 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     await _submitLogin();
+  }
+
+  /// ✅ CORREGIDO: Método submitLogin
+  Future<void> _submitLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Mostrar loading
+      AlertHelper.showLoading(
+        context: context,
+        title: 'Iniciando Sesión',
+        text: 'Verificando credenciales...',
+      );
+
+      print('🔄 Iniciando proceso de login...');
+
+      // Realizar login
+      final authResponse = await AuthService().loginWithEmail(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      print('✅ Login exitoso, guardando token...');
+
+      // Guardar token en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('access_token', authResponse.access);
+
+      // Cerrar loading
+      AlertHelper.closeLoading(context);
+
+      // ✅ CORREGIDO: Mostrar éxito y navegar después
+      _showSuccessAndNavigate();
+    } catch (e) {
+      if (!mounted) return;
+
+      // Cerrar loading si está abierto
+      AlertHelper.closeLoading(context);
+
+      // Manejo de errores
+      _handleLoginError(e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -311,7 +311,9 @@ class _LoginPageState extends State<LoginPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _submitLoginWithConnectionCheck,
+                          onPressed: _isLoading
+                              ? null
+                              : _submitLoginWithConnectionCheck,
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             backgroundColor: Colors.blue,
@@ -353,7 +355,9 @@ class _LoginPageState extends State<LoginPage> {
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: _isLoading ? null : () => _quickLogin('operador'),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _quickLogin('operador'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.blue,
                                 side: const BorderSide(color: Colors.blue),
@@ -367,7 +371,9 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: _isLoading ? null : () => _quickLogin('soporte'),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _quickLogin('soporte'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.green,
                                 side: const BorderSide(color: Colors.green),
@@ -381,7 +387,9 @@ class _LoginPageState extends State<LoginPage> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: _isLoading ? null : () => _quickLogin('coordinador'),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _quickLogin('coordinador'),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.orange,
                                 side: const BorderSide(color: Colors.orange),
