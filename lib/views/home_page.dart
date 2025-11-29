@@ -77,6 +77,7 @@ class _HomePageState extends State<HomePage> {
       case 'operador':
         return const OperadorView();
       case 'reporte_diario':
+        // return const ReporteDiarioView();
         return const ReporteDiarioView();
       case 'salida_ruta':
         return SalidaRutaView(idOperador: _idOperador ?? 0);

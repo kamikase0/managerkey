@@ -24,6 +24,7 @@ class ReporteSyncService {
     : _databaseService = databaseService;
 
   final _syncStatusController = StreamController<SyncStatus>.broadcast();
+
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
 
   Future<void> initialize({required String accessToken}) async {
@@ -481,6 +482,14 @@ class ReporteSyncService {
           'estacion': reporteData['estacion'],
           'centro_empadronamiento': reporteData['centro_empadronamiento'],
 
+          // ✅ CORREGIDO: Usar nombres correctos para los nuevos campos
+          'observacionC': reporteData['observacionC'] ?? '',
+          'observacionR': reporteData['observacionR'] ?? '',
+          'saltosenC':
+              int.tryParse(reporteData['saltosenC']?.toString() ?? '0') ?? 0,
+          'saltosenR':
+              int.tryParse(reporteData['saltosenR']?.toString() ?? '0') ?? 0,
+
           // ✅ NUEVO: Agregar fecha_registro (hora actual)
           'fecha_registro': DateTime.now()
               .toLocal()
@@ -568,6 +577,47 @@ class ReporteSyncService {
   }
 
   // ✅ NUEVO MÉTODO: Guardar reporte localmente
+  // Future<void> _guardarReporteLocalmente(
+  //   Map<String, dynamic> reporteData,
+  // ) async {
+  //   try {
+  //     final db = await DatabaseService().database;
+  //
+  //     // Mapear los datos al formato de la tabla
+  //     final datosParaBD = {
+  //       'fecha_reporte': reporteData['fecha_reporte'],
+  //       'contador_inicial_c': reporteData['contador_inicial_c'],
+  //       'contador_final_c': reporteData['contador_final_c'],
+  //       'contador_c': reporteData['registro_c'],
+  //       'contador_inicial_r': reporteData['contador_inicial_r'],
+  //       'contador_final_r': reporteData['contador_final_r'],
+  //       'contador_r': reporteData['registro_r'],
+  //       'incidencias': reporteData['incidencias'] ?? '',
+  //       'observaciones': reporteData['observaciones'] ?? '',
+  //       'operador': reporteData['operador'],
+  //       'estacion': reporteData['estacion'],
+  //       'centro_empadronamiento': reporteData['centro_empadronamiento'],
+  //       'estado': reporteData['estado'] ?? 'PENDIENTE_SINCRONIZACION',
+  //       'sincronizar': reporteData['sincronizar'] ? 1 : 0,
+  //       'synced': 0,
+  //       'observacion_c': reporteData['observacion_c'],
+  //       'observacion_r': reporteData['observacion_r'],
+  //       'saltosen_c': reporteData['saltosen_c'],
+  //       'saltosen_r': reporteData['saltosen_r'],
+  //       'updated_at': DateTime.now().toLocal().toIso8601String(),
+  //     };
+  //
+  //     final id = await db.insert(
+  //       'reportes_diarios',
+  //       datosParaBD,
+  //       conflictAlgorithm: ConflictAlgorithm.replace,
+  //     );
+  //
+  //     print('✅ Reporte guardado localmente con ID: $id');
+  //   } catch (e) {
+  //     print('❌ Error guardando reporte localmente: $e');
+  //   }
+  // }
   Future<void> _guardarReporteLocalmente(
     Map<String, dynamic> reporteData,
   ) async {
@@ -591,6 +641,15 @@ class ReporteSyncService {
         'estado': reporteData['estado'] ?? 'PENDIENTE_SINCRONIZACION',
         'sincronizar': reporteData['sincronizar'] ? 1 : 0,
         'synced': 0,
+
+        // ✅ CORREGIDO: Usar nombres correctos observacionR
+        'observacionC': reporteData['observacionC'] ?? '',
+        'observacionR': reporteData['observacionR'] ?? '',
+        'saltosenC':
+            int.tryParse(reporteData['saltosenC']?.toString() ?? '0') ?? 0,
+        'saltosenR':
+            int.tryParse(reporteData['saltosenR']?.toString() ?? '0') ?? 0,
+
         'updated_at': DateTime.now().toLocal().toIso8601String(),
       };
 
@@ -601,6 +660,7 @@ class ReporteSyncService {
       );
 
       print('✅ Reporte guardado localmente con ID: $id');
+      print('📋 Datos guardados localmente: $datosParaBD');
     } catch (e) {
       print('❌ Error guardando reporte localmente: $e');
     }
