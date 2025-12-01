@@ -6,7 +6,8 @@ import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/salida_llegada_service.dart';
 import '../../services/punto_empadronamiento_service.dart'; // ✅ NUEVO
-import '../../models/punto_empadronamiento_model.dart'; // ✅ NUEVO
+import '../../models/punto_empadronamiento_model.dart';
+import '../../utils/alert_helper.dart'; // ✅ NUEVO
 
 class SalidaRutaView extends StatefulWidget {
   final int idOperador;
@@ -228,28 +229,27 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
 
   // ✅ MODIFICADO: Método registrar salida con empadronamiento y geolocalización
   Future<void> _registrarSalida() async {
-    // if (_destino.text.isEmpty) {
-    //   _mostrarError('El destino es requerido');
-    //   return;
-    // }
-
     if (_provinciaSeleccionada == null || _puntoEmpadronamientoId == null) {
-      _mostrarError('Debe seleccionar provincia y punto de empadronamiento');
+      // ✅ CAMBIADO: Usar AlertHelper para mostrar el error
+      AlertHelper.showError(
+        context: context,
+        title: 'Datos Incompletos',
+        text: 'Debe seleccionar una provincia y un punto de empadronamiento.',
+      );
       return;
     }
 
     setState(() => _isLoading = true);
+    // ✅ OPCIONAL PERO RECOMENDADO: Mostrar alerta de carga
+    AlertHelper.showLoading(context: context, text: 'Registrando despliegue...');
 
     try {
-      // Capturar geolocalización si el GPS está activado
       bool ubicacionCapturada = false;
       if (_gpsActivado) {
         ubicacionCapturada = await _capturarGeolocalizacion();
       }
 
-      // ✅ CORREGIDO: Sin el parámetro datosDespliegue que causaba el error
       final resultado = await _salidaLlegadaService.registrarSalidaConEmpadronamiento(
-        //destino: _destino.text,
         observaciones: _observacionesController.text,
         idOperador: widget.idOperador,
         sincronizarConServidor: _sincronizarConServidor,
@@ -258,61 +258,44 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         longitud: _longitud,
       );
 
+      // Opcional: Cierra la alerta de carga si la usaste
+      if (mounted) AlertHelper.closeLoading(context);
+
       if (resultado['exitoso']) {
         _salidaLocalId = resultado['localId'];
-        _mostrarExito(resultado['mensaje']);
+        // ✅ CAMBIADO: Usar AlertHelper para el mensaje de éxito
+        AlertHelper.showSuccess(
+          context: context,
+          title: '¡Despliegue Registrado!',
+          text: resultado['mensaje'],
+        );
         _limpiarFormulario();
 
-        // Mostrar opción de ir a registrar llegada después de 2 segundos
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            ///_mostrarOpcionIrALlegada();
-          }
-        });
       } else {
-        _mostrarError(resultado['mensaje']);
+        // ✅ CAMBIADO: Usar AlertHelper para el mensaje de error
+        AlertHelper.showError(
+          context: context,
+          title: 'Registro Fallido',
+          text: resultado['mensaje'],
+        );
       }
     } catch (e) {
+      // Opcional: Cierra la alerta de carga si la usaste
+      if (mounted) AlertHelper.closeLoading(context);
+
       print('❌ Error al registrar salida: $e');
-      _mostrarError('Error al registrar salida: ${e.toString()}');
+      // ✅ CAMBIADO: Usar AlertHelper para la excepción
+      AlertHelper.showError(
+        context: context,
+        title: 'Error Inesperado',
+        text: 'Ocurrió un error al registrar el despliegue: ${e.toString()}',
+      );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
-  // void _mostrarOpcionIrALlegada() {
-  //   if (!mounted) return;
-  //
-  //   showDialog(
-  //     context: context,
-  //     builder: (ctx) => AlertDialog(
-  //       title: const Text('Salida Registrada'),
-  //       content: const Text('¿Deseas registrar la llegada ahora?'),
-  //       actions: [
-  //         TextButton(
-  //           onPressed: () => Navigator.pop(ctx),
-  //           child: const Text('Más tarde'),
-  //         ),
-  //         TextButton(
-  //           onPressed: () {
-  //             Navigator.pop(ctx);
-  //             // Navegar a llegada con el ID de salida
-  //             Navigator.pushNamed(
-  //               context,
-  //               '/llegada_ruta',
-  //               arguments: {
-  //                 'idOperador': widget.idOperador,
-  //                 'salidaLocalId': _salidaLocalId,
-  //                 'puntoEmpadronamientoId': _puntoEmpadronamientoId,
-  //               },
-  //             );
-  //           },
-  //           child: const Text('Ir a Llegada'),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
 
 
 
@@ -593,10 +576,11 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
               // ✅ MODIFICADO: Información de coordenadas con GPS
               _buildGPSInfo(),
 
+              //const SizedBox(height: 24),
+              //_buildSincronizacionSwitch(),
               const SizedBox(height: 24),
-              _buildSincronizacionSwitch(),
-              const SizedBox(height: 32),
               _buildRegistrarButton(),
+              const SizedBox(height: 50),
             ],
           ),
         ),
@@ -669,46 +653,46 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-  Widget _buildSincronizacionSwitch() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue.shade200),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Sincronizar con Servidor',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(
-                  _sincronizarConServidor
-                      ? '📤 Enviar inmediatamente'
-                      : '💾 Solo guardar localmente',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: _sincronizarConServidor
-                          ? Colors.green.shade700
-                          : Colors.orange.shade700),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: _sincronizarConServidor,
-            onChanged: (value) => setState(() => _sincronizarConServidor = value),
-            activeColor: Colors.blue,
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildSincronizacionSwitch() {
+  //   return Container(
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       color: Colors.blue.shade50,
+  //       borderRadius: BorderRadius.circular(8),
+  //       border: Border.all(color: Colors.blue.shade200),
+  //     ),
+  //     child: Row(
+  //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //       children: [
+  //         Expanded(
+  //           child: Column(
+  //             crossAxisAlignment: CrossAxisAlignment.start,
+  //             children: [
+  //               const Text('Sincronizar con Servidor',
+  //                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+  //               const SizedBox(height: 4),
+  //               Text(
+  //                 _sincronizarConServidor
+  //                     ? '📤 Enviar inmediatamente'
+  //                     : '💾 Solo guardar localmente',
+  //                 style: TextStyle(
+  //                     fontSize: 12,
+  //                     color: _sincronizarConServidor
+  //                         ? Colors.green.shade700
+  //                         : Colors.orange.shade700),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //         Switch(
+  //           value: _sincronizarConServidor,
+  //           onChanged: (value) => setState(() => _sincronizarConServidor = value),
+  //           activeColor: Colors.blue,
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildRegistrarButton() {
     return SizedBox(

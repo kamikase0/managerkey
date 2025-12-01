@@ -21,27 +21,36 @@ class ApiService {
         'Authorization': 'Bearer $token',
       };
     }
-    return {
-      'Content-Type': 'application/json',
-    };
+    return {'Content-Type': 'application/json'};
   }
 
   // ✅ SOPORTE PARA DOS MODOS: Con AuthService (completo) o solo con token (simple)
   ApiService({AuthService? authService, String? accessToken})
-      : _authService = authService,
-        _accessToken = accessToken {
+    : _authService = authService,
+      _accessToken = accessToken {
     if (authService == null && accessToken == null) {
       throw ArgumentError('Se debe proporcionar authService o accessToken');
     }
   }
 
   static final String _baseUrl = Enviroment.apiUrlDev;
-  static final String _registrosEndpoint = 'registrosdespliegue/';
+  static final String _registrosEndpoint = '/registrosdespliegue/';
   static final String _reportesEndpoint = '/reportesdiarios/';
 
-  String get registrosEndpoint => '$_baseUrl$_registrosEndpoint';
+  String _joinUrl(String base, String endpoint) {
+    String formattedBase = base;
+    // Asegurarse de que la URL base NO termine con una barra
+    if (base.endsWith('/')) {
+      formattedBase = base.substring(0, base.length - 1);
+    }
+    // Al unir, siempre quedará una sola barra en medio.
+    return '$formattedBase$endpoint';
+  }
 
-  String get reportesEndpoint => '$_baseUrl$_reportesEndpoint';
+  // 3. Usa el método auxiliar para construir los getters de los endpoints.
+  String get registrosEndpoint => _joinUrl(_baseUrl, _registrosEndpoint);
+
+  String get reportesEndpoint => _joinUrl(_baseUrl, _reportesEndpoint);
 
   // ✅ GETTER PARA ACCESO TOKEN
   String? get accessToken => _accessToken;
@@ -107,12 +116,12 @@ class ApiService {
         print('🔔 Solicitando reportes diarios desde: $url');
         return http
             .get(
-          url,
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        )
+              url,
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
             .timeout(const Duration(seconds: 20));
       });
 
@@ -178,8 +187,8 @@ class ApiService {
   /// 📊 Enviar Reporte Diario - MÉTODO MEJORADO
   /// =============================
   Future<Map<String, dynamic>> enviarReporteDiario(
-      Map<String, dynamic> reporte,
-      ) async {
+    Map<String, dynamic> reporte,
+  ) async {
     final url = Uri.parse(reportesEndpoint);
 
     // ✅ LIMPIAR DATOS ANTES DE ENVIAR
@@ -194,14 +203,14 @@ class ApiService {
         print('🧾 Body: $body');
         return http
             .post(
-          url,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: body,
-        )
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: body,
+            )
             .timeout(const Duration(seconds: 20));
       });
 
@@ -256,14 +265,14 @@ class ApiService {
         print('🧾 Datos: $body');
         return http
             .post(
-          url,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-          body: body,
-        )
+              url,
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+              body: body,
+            )
             .timeout(const Duration(seconds: 20));
       });
 
@@ -289,12 +298,12 @@ class ApiService {
         print('🔔 Solicitando registros desde: $url');
         return http
             .get(
-          url,
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        )
+              url,
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
             .timeout(const Duration(seconds: 20));
       });
 
@@ -325,7 +334,8 @@ class ApiService {
                 incidencias: '',
                 fechaHora: DateTime.now().toIso8601String(),
                 operadorId: 0,
-                sincronizado: false, // ✅ PARÁMETRO REQUERIDO
+                sincronizado: false,
+                // ✅ PARÁMETRO REQUERIDO
                 centroEmpadronamiento: null,
               );
               registros.add(registroError);
@@ -365,8 +375,8 @@ class ApiService {
   /// 🆕 MÉTODO PARA OBTENER REPORTES POR OPERADOR
   /// =============================
   Future<List<Map<String, dynamic>>> obtenerReportesPorOperador(
-      int operadorId,
-      ) async {
+    int operadorId,
+  ) async {
     try {
       final todosReportes = await obtenerReportesDiarios();
       return todosReportes.where((reporte) {
@@ -389,25 +399,23 @@ class ApiService {
         throw Exception('No hay token de autenticación disponible');
       }
 
-      final url = Uri.parse(
-        '$_baseUrl/registrosdespliegue/',
-      );
+      final url = Uri.parse('$_baseUrl/registrosdespliegue/');
 
       print('📡 GET $url');
 
       final response = await http
           .get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      )
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          )
           .timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('Timeout al obtener registros'),
-      );
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception('Timeout al obtener registros'),
+          );
 
       print('📊 Status: ${response.statusCode}');
       print('📋 Response body length: ${response.body.length}');
@@ -454,8 +462,8 @@ class ApiService {
   /// 📥 Obtener registros de despliegue de un operador específico - CORREGIDO
   /// =============================
   Future<List<Map<String, dynamic>>> obtenerRegistrosDespliegueDelOperador(
-      int idOperador,
-      ) async {
+    int idOperador,
+  ) async {
     try {
       final token = await _getAccessToken();
       if (token == null) {
@@ -470,17 +478,17 @@ class ApiService {
 
       final response = await http
           .get(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      )
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+          )
           .timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('Timeout al obtener registros'),
-      );
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception('Timeout al obtener registros'),
+          );
 
       print('📊 Status: ${response.statusCode}');
 
@@ -523,7 +531,9 @@ class ApiService {
   /// =============================
   /// 🆕 MÉTODO PARA OBTENER ÚLTIMO REGISTRO DE DESPLIEGUE - CORREGIDO
   /// =============================
-  Future<RegistroDespliegue?> obtenerUltimoRegistroDespliegue(int operadorId) async {
+  Future<RegistroDespliegue?> obtenerUltimoRegistroDespliegue(
+    int operadorId,
+  ) async {
     try {
       final token = await _getAccessToken();
       if (token == null) {
@@ -545,15 +555,34 @@ class ApiService {
         print('data $data');
         return RegistroDespliegue.fromApiMap(data);
       } else if (response.statusCode == 404) {
-        print('📭 No hay registro activo en servidor para operador $operadorId');
+        print(
+          '📭 No hay registro activo en servidor para operador $operadorId',
+        );
         return null;
       } else {
-        print('❌ Error al obtener registro: ${response.statusCode} - ${response.body}');
+        print(
+          '❌ Error al obtener registro: ${response.statusCode} - ${response.body}',
+        );
         return null;
       }
     } catch (e) {
       print('❌ Error en obtenerUltimoRegistroDespliegue: $e');
       return null;
     }
+  }
+
+  //OBTENER REPOERTES DIARIOS
+  Future<List<Map<String, dynamic>>> getReportesDiariosOperador(
+    int operadorId,
+  ) async {
+    // Reutiliza el método existente que obtiene todos los reportes
+    final todosReportes = await obtenerReportesDiarios();
+
+    // Filtra la lista para devolver solo los que coinciden con el operadorId
+    return todosReportes.where((reporte) {
+      //asegurate  que la clave de operador exista y sea del tipo correcto
+      return reporte.containsKey('operador') &&
+          reporte['operador'] == operadorId;
+    }).toList();
   }
 }

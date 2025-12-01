@@ -236,16 +236,61 @@ class ReporteSyncService {
     await _databaseService.deleteReporte(reporte['id']);
   }
 
+  // Future<void> _syncRegistroDespliegue(RegistroDespliegue registro) async {
+  //   final registroMap = registro.toApiMap();
+  //   final enviado = await _apiService!.enviarRegistroDespliegue(registroMap);
+  //
+  //   if (!enviado) {
+  //     throw Exception('Error al sincronizar registro de despliegue');
+  //   }
+  //
+  //   await _databaseService.eliminarRegistroDespliegue(registro.id!);
+  // }
+  // ✅ ESTA ES LA VERSIÓN CORREGIDA Y MEJORADA
   Future<void> _syncRegistroDespliegue(RegistroDespliegue registro) async {
-    final registroMap = registro.toApiMap();
-    final enviado = await _apiService!.enviarRegistroDespliegue(registroMap);
+    // --- INICIO DE LA CORRECCIÓN ---
+    // 1. Tomamos los datos del registro local.
+    //    Usamos toMap() porque nos da todos los campos, incluyendo los que pueden estar mal.
+    final datosLocales = registro.toMap();
+
+    // 2. Creamos un nuevo mapa con los datos que se enviarán a la API,
+    //    replicando la misma estructura que funciona en el envío online.
+    final datosParaApi = {
+      'latitud': datosLocales['latitud'],
+      'longitud': datosLocales['longitud'],
+      'descripcion_reporte': datosLocales['descripcionReporte'],
+      'estado': 'DESPLIEGUE_SYNC', // Un estado para saber que vino de una sincronización
+      'sincronizar': true,
+      'observaciones': datosLocales['observaciones'],
+      'incidencias': datosLocales['incidencias'],
+      // 3. Corregimos los campos problemáticos.
+      //    Si la fecha está vacía o nula, usamos la del registro local.
+      //    Si no, usamos una nueva para asegurar un formato válido.
+      'fecha_hora': (datosLocales['fechaHora'] as String?)?.isNotEmpty ?? false
+          ? datosLocales['fechaHora']
+          : DateTime.now().toIso8601String(),
+      'operador': datosLocales['operadorId'], // Usamos el 'operadorId' guardado.
+      'centro_empadronamiento': datosLocales['centroEmpadronamiento'],
+    };
+
+    print('🔄 Sincronizando Registro de Despliegue ID: ${registro.id}');
+    print('📦 Datos corregidos para API: $datosParaApi');
+    // --- FIN DE LA CORRECCIÓN ---
+
+    // 4. Enviamos los datos ya corregidos y completos.
+    final enviado = await _apiService!.enviarRegistroDespliegue(datosParaApi);
 
     if (!enviado) {
+      // Si aún falla, imprimimos el error que viene del ApiService para tener más detalles.
+      print('❌ Fallo al sincronizar el registro de despliegue ID: ${registro.id}');
       throw Exception('Error al sincronizar registro de despliegue');
     }
 
+    print('✅ Registro de despliegue ID: ${registro.id} sincronizado exitosamente.');
+    // 5. Si se envió con éxito, lo eliminamos de la base de datos local para no volver a enviarlo.
     await _databaseService.eliminarRegistroDespliegue(registro.id!);
   }
+
 
   /// Guardar reporte con geolocalización (método unificado)
   // Future<Map<String, dynamic>> saveReporteGeolocalizacion({
@@ -459,7 +504,7 @@ class ReporteSyncService {
         }
 
         // ✅ URL CORRECTA PARA REPORTES
-        final url = '${Enviroment.apiUrlDev}/reportesdiarios/';
+        final url = '${Enviroment.apiUrlDev}reportesdiarios/';
 
         print('🔗 URL: $url');
         print('🔑 Token: ${accessToken.substring(0, 20)}...');
@@ -672,7 +717,7 @@ class ReporteSyncService {
     String accessToken,
   ) async {
     try {
-      final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
+      final url = '${Enviroment.apiUrlDev}registrosdespliegue/';
 
       final jsonDespliegue = {
         'latitud': double.tryParse(despliegueData['latitud'].toString()) ?? 0,
