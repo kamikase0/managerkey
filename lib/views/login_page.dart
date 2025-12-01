@@ -340,68 +340,62 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 24),
                       const Divider(),
 
-                      const Text(
-                        'Acceso rápido (para testing):',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => _quickLogin('operador'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.blue,
-                                side: const BorderSide(color: Colors.blue),
-                              ),
-                              child: const Text(
-                                'Operador',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => _quickLogin('soporte'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.green,
-                                side: const BorderSide(color: Colors.green),
-                              ),
-                              child: const Text(
-                                'Soporte',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => _quickLogin('coordinador'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.orange,
-                                side: const BorderSide(color: Colors.orange),
-                              ),
-                              child: const Text(
-                                'Coordinador',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      // const Text(
+                      //   'Acceso rápido (para testing):',
+                      //   style: TextStyle(
+                      //     fontWeight: FontWeight.bold,
+                      //     color: Colors.grey,
+                      //     fontSize: 12,
+                      //   ),
+                      // ),
+                      //
+                      // const SizedBox(height: 12),
+                      //
+                      // Row(
+                      //   children: [
+                      //     Expanded(
+                      //       child: OutlinedButton(
+                      //         onPressed: _isLoading ? null : () => _quickLogin('operador'),
+                      //         style: OutlinedButton.styleFrom(
+                      //           foregroundColor: Colors.blue,
+                      //           side: const BorderSide(color: Colors.blue),
+                      //         ),
+                      //         child: const Text(
+                      //           'Operador',
+                      //           style: TextStyle(fontSize: 12),
+                      //         ),
+                      //       ),
+                      //     ),
+                      //     const SizedBox(width: 8),
+                      //     Expanded(
+                      //       child: OutlinedButton(
+                      //         onPressed: _isLoading ? null : () => _quickLogin('soporte'),
+                      //         style: OutlinedButton.styleFrom(
+                      //           foregroundColor: Colors.green,
+                      //           side: const BorderSide(color: Colors.green),
+                      //         ),
+                      //         child: const Text(
+                      //           'Soporte',
+                      //           style: TextStyle(fontSize: 12),
+                      //         ),
+                      //       ),
+                      //     ),
+                      //     const SizedBox(width: 8),
+                      //     Expanded(
+                      //       child: OutlinedButton(
+                      //         onPressed: _isLoading ? null : () => _quickLogin('coordinador'),
+                      //         style: OutlinedButton.styleFrom(
+                      //           foregroundColor: Colors.orange,
+                      //           side: const BorderSide(color: Colors.orange),
+                      //         ),
+                      //         child: const Text(
+                      //           'Coordinador',
+                      //           style: TextStyle(fontSize: 12),
+                      //         ),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ),
                     ],
                   ),
                 ),

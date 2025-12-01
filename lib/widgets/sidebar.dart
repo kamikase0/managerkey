@@ -93,6 +93,7 @@ class Sidebar extends StatelessWidget {
               icon: Icons.history,
               label: 'Historial de Reportes',
               destination: const ReporteHistorialView(),
+              // destination: const HistorialReportesDiariosView(),
             ),
           ]
           // Menú para Operador Urbano

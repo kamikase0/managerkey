@@ -24,8 +24,8 @@ class AuthService {
   static const String _userKey = 'user_data';
   static const String _reportesKey = 'reportes_cargados';
 
-  static const String _baseUrl = '${Enviroment.apiUrlDev}/token/';
-  static const String _refreshUrl = '${Enviroment.apiUrlDev}/token/refresh/';
+  static const String _baseUrl = '${Enviroment.apiUrlDev}token/';
+  static const String _refreshUrl = '${Enviroment.apiUrlDev}token/refresh/';
 
   Future<AuthResponse> loginWithEmail(String username, String password) async {
     final url = Uri.parse(_baseUrl);

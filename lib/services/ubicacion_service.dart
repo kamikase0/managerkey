@@ -22,7 +22,7 @@ class UbicacionService {
   int? _currentIdOperador; // CAMBIADO: Ahora guardamos el id_operador
   String? _currentUserType;
 
-  static const String _apiUrl = '${Enviroment.apiUrlDev}/ubicaciones-operador/';
+  static const String _apiUrl = '${Enviroment.apiUrlDev}ubicaciones-operador/';
 
   void initialize({
     required LocationService locationService,

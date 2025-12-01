@@ -111,50 +111,54 @@ class SalidaLlegadaService {
   /// NUEVO MÉTODO: Registrar salida con empadronamiento
   // En SalidaLlegadaService - versión con parámetro opcional
   // En SalidaLlegadaService - VERSIÓN CORRECTA (Opción 1)
-  Future<Map<String, dynamic>> registrarSalidaConEmpadronamiento({
-    //required String destino,
-    required String observaciones,
-    required int idOperador,
-    required bool sincronizarConServidor,
-    required int puntoEmpadronamientoId,
-    String? latitud,
-    String? longitud,
-    // ❌ NO incluir datosDespliegue aquí
-  }) async {
-    try {
-      // ✅ Asegurar que la tabla esté migrada antes de cualquier operación
-      await migrateRegistrosDespliegueTable();
-
-      final datos = {
-        "latitud": latitud ?? '-16.3453',
-        "longitud": longitud ?? '-22.890',
-        "descripcion_reporte": null,
-        "estado": "DESPLIEGUE",
-        "sincronizar": true,
-        "observaciones": observaciones.isNotEmpty ? observaciones : "FFF",
-        "incidencias": latitud != null
-            ? 'Ubicación capturada'
-            : 'GPS desactivado',
-        "fecha_hora": DateTime.now().toIso8601String(),
-        "operador": idOperador,
-        "centro_empadronamiento": puntoEmpadronamientoId,
-      };
-
-      print('🚀 Intentando registrar salida con empadronamiento...');
-
-      if (sincronizarConServidor) {
-        return await _enviarDespliegueDirecto(datos);
-      } else {
-        return await _guardarSalidaLocalmente(datos);
-      }
-    } catch (e) {
-      return {
-        'exitoso': false,
-        'mensaje': 'Error: ${e.toString()}',
-        'localId': null,
-      };
-    }
-  }
+  // Future<Map<String, dynamic>> registrarSalidaConEmpadronamiento({
+  //   //required String destino,
+  //   required String observaciones,
+  //   required int idOperador,
+  //   required bool sincronizarConServidor,
+  //   required int puntoEmpadronamientoId,
+  //   String? latitud,
+  //   String? longitud,
+  //   // ❌ NO incluir datosDespliegue aquí
+  // }) async {
+  //   try {
+  //     // ✅ Asegurar que la tabla esté migrada antes de cualquier operación
+  //     await migrateRegistrosDespliegueTable();
+  //
+  //     final datos = {
+  //       "latitud": latitud ?? '-16.3453',
+  //       "longitud": longitud ?? '-22.890',
+  //       "descripcion_reporte": null,
+  //       "estado": "DESPLIEGUE",
+  //       "sincronizar": true,
+  //       "observaciones": observaciones.isNotEmpty ? observaciones : "FFF",
+  //       "incidencias": latitud != null
+  //           ? 'Ubicación capturada'
+  //           : 'GPS desactivado',
+  //       "fecha_hora": DateTime.now().toIso8601String(),
+  //       "operador": idOperador,
+  //       "centro_empadronamiento": puntoEmpadronamientoId,
+  //     };
+  //
+  //     print('🚀 Intentando registrar salida con empadronamiento...');
+  //
+  //     if (sincronizarConServidor) {
+  //       return await _enviarDespliegueDirecto(datos);
+  //     } else {
+  //       return await _guardarSalidaLocalmente(datos);
+  //     }
+  //   }
+  //   catch (e) {
+  //
+  //
+  //
+  //     return {
+  //       'exitoso': false,
+  //       'mensaje': 'Error: ${e.toString()}',
+  //       'localId': null,
+  //     };
+  //   }
+  // }
 
   /// CASO 1, 2, 3, 4: Registrar LLEGADA
   /// Inteligentemente sincroniza la salida correspondiente si es necesario
@@ -511,103 +515,103 @@ class SalidaLlegadaService {
   // ========== MÉTODOS NUEVOS PARA EMPADRONAMIENTO ==========
 
   /// Enviar despliegue directo al servidor
-  Future<Map<String, dynamic>> _enviarDespliegueDirecto(
-    Map<String, dynamic> datos,
-  ) async {
-    try {
-      final authService = AuthService();
-      final token = await authService.getAccessToken();
-
-      if (token == null) {
-        throw Exception('No hay token de autenticación disponible');
-      }
-
-      // ✅ CORREGIDO: Usar el endpoint correcto de registrosdespliegue
-      final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
-
-      print('📤 Enviando a: $url');
-      print('📦 Datos: $datos');
-
-      final response = await http
-          .post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode(datos),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      print('📥 Respuesta - Status: ${response.statusCode}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Éxito - Despliegue registrado en servidor');
-        return {
-          'exitoso': true,
-          'mensaje': 'Salida registrada exitosamente en servidor',
-          'localId': null,
-        };
-      } else {
-        // Si falla, guardar localmente
-        final errorBody = utf8.decode(response.bodyBytes);
-        print('⚠️ Error del servidor: ${response.statusCode}');
-        print('📄 Response body: $errorBody');
-        print('💾 Guardando localmente como fallback...');
-        return await _guardarSalidaLocalmente(datos);
-      }
-    } catch (e) {
-      print('❌ Error de conexión: $e');
-      // Fallback a guardado local
-      return await _guardarSalidaLocalmente(datos);
-    }
-  }
+  // Future<Map<String, dynamic>> _enviarDespliegueDirecto(
+  //   Map<String, dynamic> datos,
+  // ) async {
+  //   try {
+  //     final authService = AuthService();
+  //     final token = await authService.getAccessToken();
+  //
+  //     if (token == null) {
+  //       throw Exception('No hay token de autenticación disponible');
+  //     }
+  //
+  //     // ✅ CORREGIDO: Usar el endpoint correcto de registrosdespliegue
+  //     final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
+  //
+  //     print('📤 Enviando a: $url');
+  //     print('📦 Datos: $datos');
+  //
+  //     final response = await http
+  //         .post(
+  //           Uri.parse(url),
+  //           headers: {
+  //             'Content-Type': 'application/json',
+  //             'Accept': 'application/json',
+  //             'Authorization': 'Bearer $token',
+  //           },
+  //           body: jsonEncode(datos),
+  //         )
+  //         .timeout(const Duration(seconds: 20));
+  //
+  //     print('📥 Respuesta - Status: ${response.statusCode}');
+  //
+  //     if (response.statusCode == 200 || response.statusCode == 201) {
+  //       print('✅ Éxito - Despliegue registrado en servidor');
+  //       return {
+  //         'exitoso': true,
+  //         'mensaje': 'Salida registrada exitosamente en servidor',
+  //         'localId': null,
+  //       };
+  //     } else {
+  //       // Si falla, guardar localmente
+  //       final errorBody = utf8.decode(response.bodyBytes);
+  //       print('⚠️ Error del servidor: ${response.statusCode}');
+  //       print('📄 Response body: $errorBody');
+  //       print('💾 Guardando localmente como fallback...');
+  //       return await _guardarSalidaLocalmente(datos);
+  //     }
+  //   } catch (e) {
+  //     print('❌ Error de conexión: $e');
+  //     // Fallback a guardado local
+  //     return await _guardarSalidaLocalmente(datos);
+  //   }
+  // }
 
   /// Guardar salida localmente con empadronamiento
-  Future<Map<String, dynamic>> _guardarSalidaLocalmente(
-    Map<String, dynamic> datos,
-  ) async {
-    try {
-      final db = await DatabaseService().database;
-      final ahora = DateTime.now();
-
-      // ✅ VERIFICAR QUE LA TABLA EXISTE ANTES DE INSERTAR
-      await _ensureRegistrosDespliegueTableExists(db);
-
-      final id = await db.insert('registros_despliegue', {
-        'destino': datos['observaciones'] ?? 'Despliegue',
-        'latitud': datos['latitud'],
-        'longitud': datos['longitud'],
-        'observaciones': datos['observaciones'],
-        'incidencias': datos['incidencias'],
-        'fecha_hora': datos['fecha_hora'],
-        'operador': datos['operador'],
-        // ✅ CORREGIDO: usar 'operador' no 'operador_id'
-        'centro_empadronamiento': datos['centro_empadronamiento'],
-        'estado': 'PENDIENTE_SINCRONIZACION',
-        'sincronizado': 0,
-        'fecha_creacion': ahora.toIso8601String(),
-        'fecha_modificacion': ahora.toIso8601String(),
-      });
-
-      print('💾 Salida guardada localmente con ID: $id');
-
-      return {
-        'exitoso': true,
-        'mensaje':
-            'Salida guardada localmente. Se sincronizará cuando haya internet.',
-        'localId': id,
-      };
-    } catch (e) {
-      print('❌ Error guardando localmente: $e');
-      return {
-        'exitoso': false,
-        'mensaje': 'Error guardando localmente: ${e.toString()}',
-        'localId': null,
-      };
-    }
-  }
+  // Future<Map<String, dynamic>> _guardarSalidaLocalmente(
+  //   Map<String, dynamic> datos,
+  // ) async {
+  //   try {
+  //     final db = await DatabaseService().database;
+  //     final ahora = DateTime.now();
+  //
+  //     // ✅ VERIFICAR QUE LA TABLA EXISTE ANTES DE INSERTAR
+  //     await _ensureRegistrosDespliegueTableExists(db);
+  //
+  //     final id = await db.insert('registros_despliegue', {
+  //       'destino': datos['observaciones'] ?? 'Despliegue',
+  //       'latitud': datos['latitud'],
+  //       'longitud': datos['longitud'],
+  //       'observaciones': datos['observaciones'],
+  //       'incidencias': datos['incidencias'],
+  //       'fecha_hora': datos['fecha_hora'],
+  //       'operador': datos['operador'],
+  //       // ✅ CORREGIDO: usar 'operador' no 'operador_id'
+  //       'centro_empadronamiento': datos['centro_empadronamiento'],
+  //       'estado': 'PENDIENTE_SINCRONIZACION',
+  //       'sincronizado': 0,
+  //       'fecha_creacion': ahora.toIso8601String(),
+  //       'fecha_modificacion': ahora.toIso8601String(),
+  //     });
+  //
+  //     print('💾 Salida guardada localmente con ID: $id');
+  //
+  //     return {
+  //       'exitoso': true,
+  //       'mensaje':
+  //           'Salida guardada localmente. Se sincronizará cuando haya internet.',
+  //       'localId': id,
+  //     };
+  //   } catch (e) {
+  //     print('❌ Error guardando localmente: $e');
+  //     return {
+  //       'exitoso': false,
+  //       'mensaje': 'Error guardando localmente: ${e.toString()}',
+  //       'localId': null,
+  //     };
+  //   }
+  // }
 
   /// Asegurar que la tabla existe
   Future<void> _ensureRegistrosDespliegueTableExists(Database db) async {
@@ -832,6 +836,223 @@ class SalidaLlegadaService {
       }
     } catch (e) {
       print('❌ Error en sincronizarRegistrosPendientes: $e');
+    }
+  }
+
+
+  /// Envía el despliegue al servidor. Si falla, llama a guardar localmente.
+  // Future<Map<String, dynamic>> _enviarDespliegueDirecto(
+  //     Map<String, dynamic> datos,
+  //     ) async {
+  //   try {
+  //     final token = await _authService.getAccessToken();
+  //     if (token == null) throw Exception('No hay token de autenticación');
+  //
+  //     final url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
+  //     print('📤 Enviando a: $url');
+  //
+  //     final response = await http.post(
+  //       Uri.parse(url),
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Accept': 'application/json',
+  //         'Authorization': 'Bearer $token',
+  //       },
+  //       body: jsonEncode(datos),
+  //     ).timeout(const Duration(seconds: 20));
+  //
+  //     print('📥 Respuesta - Status: ${response.statusCode}');
+  //
+  //     if (response.statusCode == 201) {
+  //       print('✅ Éxito - Despliegue registrado en servidor');
+  //       return {
+  //         'exitoso': true,
+  //         'mensaje': 'Salida registrada exitosamente en el servidor.',
+  //         'localId': null,
+  //       };
+  //     } else {
+  //       final errorBody = utf8.decode(response.bodyBytes);
+  //       print('⚠️ Error del servidor: ${response.statusCode} - $errorBody');
+  //       print('💾 Fallback: Guardando localmente...');
+  //       return await _guardarSalidaLocalmente(datos); // Fallback a guardado local
+  //     }
+  //   } catch (e) {
+  //     print('❌ Error de conexión o timeout: $e');
+  //     print('💾 Fallback: Guardando localmente...');
+  //     return await _guardarSalidaLocalmente(datos); // Fallback a guardado local
+  //   }
+  // }
+
+  /// Guarda el despliegue en la base de datos SQLite.
+  // Future<Map<String, dynamic>> _guardarSalidaLocalmente(
+  //     Map<String, dynamic> datos,
+  //     ) async {
+  //   try {
+  //     // PASO 2: Mapear los datos del formato API al formato de la BD local.
+  //     // Aquí se resuelve la inconsistencia de nombres de campos.
+  //     final registroParaDb = RegistroDespliegue(
+  //       latitud: datos['latitud']?.toString() ?? '0',
+  //       longitud: datos['longitud']?.toString() ?? '0',
+  //       descripcionReporte: datos['descripcion_reporte'],
+  //       estado: 'PENDIENTE_SINCRONIZACION', // Estado específico para offline
+  //       sincronizar: false, // No aplica para local
+  //       observaciones: datos['observaciones'],
+  //       incidencias: datos['incidencias'],
+  //       fechaHora: datos['fecha_hora'],
+  //       // ✅ CORRECCIÓN MÁS IMPORTANTE: Usar la clave correcta del mapa de datos.
+  //       operadorId: datos['operador'],
+  //       centroEmpadronamiento: datos['centro_empadronamiento'],
+  //       sincronizado: false, // Se marca como NO sincronizado
+  //     );
+  //
+  //     final localId = await _databaseService.insertRegistroDespliegue(registroParaDb);
+  //
+  //     print('💾 Salida guardada localmente con ID: $localId');
+  //     return {
+  //       'exitoso': true,
+  //       'mensaje': 'Salida guardada localmente. Se sincronizará cuando haya internet.',
+  //       'localId': localId,
+  //     };
+  //   } catch (e) {
+  //     print('❌ Error crítico guardando localmente: $e');
+  //     return {
+  //       'exitoso': false,
+  //       'mensaje': 'Error grave al guardar en la base de datos local: ${e.toString()}',
+  //       'localId': null,
+  //     };
+  //   }
+  // }
+
+  Future<Map<String, dynamic>> registrarSalidaConEmpadronamiento({
+    required String observaciones,
+    required int idOperador,
+    required bool sincronizarConServidor,
+    required int puntoEmpadronamientoId,
+    String? latitud,
+    String? longitud,
+  }) async {
+    // PASO 1: Construir el mapa de datos para la API (nuestra "fuente de verdad")
+    final datosParaApi = {
+      "latitud": latitud,
+      "longitud": longitud,
+      "descripcion_reporte": null,
+      "estado": "DESPLIEGUE",
+      "sincronizar": true,
+      "observaciones": observaciones,
+      "incidencias": latitud != null ? 'Ubicación capturada' : 'GPS desactivado',
+      "fecha_hora": DateTime.now().toIso8601String(),
+      "operador": idOperador,
+      "centro_empadronamiento": puntoEmpadronamientoId,
+    };
+
+    print('🚀 Iniciando registro de despliegue...');
+    print('📦 Datos construidos: $datosParaApi');
+
+    final tieneInternet = await _syncService.verificarConexion();
+
+    if (sincronizarConServidor && tieneInternet) {
+      print('🌐 Conexión detectada. Intentando envío directo al servidor.');
+      return await _enviarDespliegueDirecto(datosParaApi);
+    } else {
+      print('📡 Sin conexión o modo offline. Guardando registro localmente.');
+      return await _guardarSalidaLocalmente(datosParaApi);
+    }
+  }
+
+  //============================================================================
+  // MÉTODOS AUXILIARES (INTERNOS DEL SERVICIO)
+  //============================================================================
+
+  /// Envía el despliegue al servidor. Si falla, llama a guardar localmente.
+  Future<Map<String, dynamic>> _enviarDespliegueDirecto(
+      Map<String, dynamic> datos,
+      ) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) throw Exception('No hay token de autenticación');
+
+      // ✅ SOLUCIÓN #1: URL CORREGIDA
+      // Aseguramos que la URL no tenga "api" duplicado.
+      // Esta es la forma más segura de construirla.
+      final url = '${Enviroment.apiUrlDev}registrosdespliegue/';
+      print('📤 Enviando a: $url');
+
+      final response = await http
+          .post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(datos),
+      )
+          .timeout(const Duration(seconds: 20));
+
+      print('📥 Respuesta - Status: ${response.statusCode}');
+
+      if (response.statusCode == 201) {
+        print('✅ Éxito - Despliegue registrado en servidor');
+        return {
+          'exitoso': true,
+          'mensaje': 'Salida registrada exitosamente en el servidor.',
+          'localId': null,
+        };
+      } else {
+        final errorBody = utf8.decode(response.bodyBytes);
+        print('⚠️ Error del servidor: ${response.statusCode} - $errorBody');
+        print('💾 Fallback: Guardando localmente...');
+        return await _guardarSalidaLocalmente(datos);
+      }
+    } catch (e) {
+      print('❌ Error de conexión o timeout: $e');
+      print('💾 Fallback: Guardando localmente...');
+      return await _guardarSalidaLocalmente(datos);
+    }
+  }
+
+  /// Guarda el despliegue en la base de datos SQLite.
+  Future<Map<String, dynamic>> _guardarSalidaLocalmente(
+      Map<String, dynamic> datos,
+      ) async {
+    try {
+      // ✅ SOLUCIÓN #2: Mapeo explícito a las columnas de la BD
+      // Creamos un objeto RegistroDespliegue que coincide con el modelo que usa `insertRegistroDespliegue`.
+      final registroParaDb = RegistroDespliegue(
+        // Los nombres de la izquierda son los del modelo (camelCase)
+        latitud: datos['latitud']?.toString() ?? '0',
+        longitud: datos['longitud']?.toString() ?? '0',
+        descripcionReporte: datos['descripcion_reporte'],
+        estado: 'PENDIENTE_SINCRONIZACION',
+        sincronizar: false,
+        observaciones: datos['observaciones'],
+        incidencias: datos['incidencias'],
+        fechaHora: datos['fecha_hora'],
+        operadorId: datos['operador'], // Mapeo de 'operador' a 'operadorId'
+        centroEmpadronamiento: datos['centro_empadronamiento'],
+        sincronizado: false,
+      );
+
+      // Ahora usamos el método del DatabaseService que sabe cómo manejar este objeto
+      final localId = await _databaseService.insertRegistroDespliegue(registroParaDb);
+
+      if (localId == -1) {
+        throw Exception("El método insertRegistroDespliegue devolvió un error (-1)");
+      }
+
+      print('💾 Salida guardada localmente con ID: $localId');
+      return {
+        'exitoso': true,
+        'mensaje': 'Salida guardada localmente. Se sincronizará cuando haya internet.',
+        'localId': localId,
+      };
+    } catch (e) {
+      print('❌ Error crítico guardando localmente: $e');
+      return {
+        'exitoso': false,
+        'mensaje': 'Error grave al guardar en la base de datos local: ${e.toString()}',
+        'localId': null,
+      };
     }
   }
 }

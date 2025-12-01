@@ -13,7 +13,8 @@ class PuntoEmpadronamientoService {
   Future<List<PuntoEmpadronamiento>> getPuntosEmpadronamientoFromAPI(String token) async {
     try {
       print('🔄 [DEBUG] Obteniendo puntos de empadronamiento desde API...');
-      final url = Uri.parse('$_baseUrl/listar-puntos-empadronamiento/');
+
+      final url = Uri.parse(_baseUrl + 'listar-puntos-empadronamiento');
       print('🔄 [DEBUG] URL: $url');
 
       final response = await http.get(
