@@ -5,9 +5,10 @@ import '../../services/location_service.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/salida_llegada_service.dart';
-import '../../services/punto_empadronamiento_service.dart'; // ✅ NUEVO
+import '../../services/punto_empadronamiento_service.dart';
 import '../../models/punto_empadronamiento_model.dart';
-import '../../utils/alert_helper.dart'; // ✅ NUEVO
+import '../../utils/alert_helper.dart';
+import '../../widgets/sync_monitor_widget.dart'; // ✅ NUEVO: Importar widget de sincronización
 
 class SalidaRutaView extends StatefulWidget {
   final int idOperador;
@@ -20,9 +21,6 @@ class SalidaRutaView extends StatefulWidget {
 
 class _SalidaRutaViewState extends State<SalidaRutaView> {
   final _observacionesController = TextEditingController();
-  //final _destino = TextEditingController();
-
-  bool _sincronizarConServidor = true;
   bool _isLoading = false;
   String _coordenadas = 'No capturadas';
 
@@ -31,10 +29,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   String _userEmail = 'Cargando...';
   User? _currentUser;
   late AuthService _authService;
-  late DatabaseService _databaseService;
   late SalidaLlegadaService _salidaLlegadaService;
-
-  int? _salidaLocalId; // Guardar ID de salida para usarlo en llegada
 
   // ✅ NUEVAS VARIABLES PARA EMPADRONAMIENTO
   String? _provinciaSeleccionada;
@@ -56,11 +51,10 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   void initState() {
     super.initState();
     _authService = AuthService();
-    _databaseService = DatabaseService();
     _salidaLlegadaService = SalidaLlegadaService();
     _loadUserData();
-    _cargarDatosEmpadronamiento(); // ✅ NUEVO
-    _verificarEstadoGPS(); // ✅ NUEVO
+    _cargarDatosEmpadronamiento();
+    _verificarEstadoGPS();
   }
 
   Future<void> _loadUserData() async {
@@ -92,7 +86,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
-  // ✅ NUEVO: Método para cargar datos de empadronamiento
   Future<void> _cargarDatosEmpadronamiento() async {
     try {
       setState(() {
@@ -114,7 +107,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
-  // ✅ NUEVO: Método para cuando se selecciona una provincia
   void _onProvinciaSeleccionada(String? provincia) async {
     if (provincia == null) return;
 
@@ -126,7 +118,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     });
 
     try {
-      // Cargar puntos de empadronamiento para la provincia seleccionada
       final puntos = await _puntoService.getPuntosByProvincia(provincia);
       final nombresPuntos = puntos.map((p) => p.puntoEmpadronamiento).toList();
 
@@ -140,7 +131,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
-  // ✅ NUEVO: Método para cuando se selecciona un punto de empadronamiento
   void _onPuntoEmpadronamientoSeleccionado(String? punto) async {
     if (punto == null) return;
 
@@ -149,7 +139,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     });
 
     try {
-      // Obtener el ID del punto seleccionado
       final puntos = await _puntoService.getPuntosByProvincia(_provinciaSeleccionada!);
       final puntoSeleccionado = puntos.firstWhere(
             (p) => p.puntoEmpadronamiento == punto,
@@ -171,7 +160,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
-  // ✅ NUEVO: Método para capturar geolocalización
   Future<bool> _capturarGeolocalizacion() async {
     setState(() => _locationLoading = true);
     try {
@@ -211,7 +199,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
-  // ✅ NUEVO: Verificar estado GPS
   Future<void> _verificarEstadoGPS() async {
     try {
       final servicioHabilitado = await Geolocator.isLocationServiceEnabled();
@@ -227,10 +214,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
-  // ✅ MODIFICADO: Método registrar salida con empadronamiento y geolocalización
+  // ✅ ACTUALIZADO: Método registrar salida con manejo mejorado de offline
   Future<void> _registrarSalida() async {
     if (_provinciaSeleccionada == null || _puntoEmpadronamientoId == null) {
-      // ✅ CAMBIADO: Usar AlertHelper para mostrar el error
       AlertHelper.showError(
         context: context,
         title: 'Datos Incompletos',
@@ -240,7 +226,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
 
     setState(() => _isLoading = true);
-    // ✅ OPCIONAL PERO RECOMENDADO: Mostrar alerta de carga
     AlertHelper.showLoading(context: context, text: 'Registrando despliegue...');
 
     try {
@@ -249,30 +234,37 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         ubicacionCapturada = await _capturarGeolocalizacion();
       }
 
+      // ✅ USAR EL SERVICIO ACTUALIZADO
       final resultado = await _salidaLlegadaService.registrarSalidaConEmpadronamiento(
         observaciones: _observacionesController.text,
         idOperador: widget.idOperador,
-        sincronizarConServidor: _sincronizarConServidor,
+        sincronizarConServidor: true, // Siempre intentar sincronizar
         puntoEmpadronamientoId: _puntoEmpadronamientoId!,
         latitud: _latitud,
         longitud: _longitud,
       );
 
-      // Opcional: Cierra la alerta de carga si la usaste
       if (mounted) AlertHelper.closeLoading(context);
 
       if (resultado['exitoso']) {
-        _salidaLocalId = resultado['localId'];
-        // ✅ CAMBIADO: Usar AlertHelper para el mensaje de éxito
-        AlertHelper.showSuccess(
-          context: context,
-          title: '¡Despliegue Registrado!',
-          text: resultado['mensaje'],
-        );
+        // ✅ MOSTRAR MENSAJE DIFERENTE SEGÚN SI SE SINCRONIZÓ O NO
+        if (resultado['sincronizado'] == true) {
+          AlertHelper.showSuccess(
+            context: context,
+            title: '✅ ¡Despliegue Registrado!',
+            text: '${resultado['mensaje']}\n\nLos datos se han guardado en registros_despliegue y sincronizado con el servidor.',
+          );
+        } else {
+          AlertHelper.showInfo(
+            context: context,
+            title: '📱 ¡Despliegue Guardado!',
+            text: '${resultado["mensaje"]}\n\nLos datos se guardaron en registros_despliegue y se sincronizarán automáticamente cuando haya conexión.',
+          );
+        }
+
         _limpiarFormulario();
 
       } else {
-        // ✅ CAMBIADO: Usar AlertHelper para el mensaje de error
         AlertHelper.showError(
           context: context,
           title: 'Registro Fallido',
@@ -280,11 +272,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         );
       }
     } catch (e) {
-      // Opcional: Cierra la alerta de carga si la usaste
       if (mounted) AlertHelper.closeLoading(context);
 
       print('❌ Error al registrar salida: $e');
-      // ✅ CAMBIADO: Usar AlertHelper para la excepción
       AlertHelper.showError(
         context: context,
         title: 'Error Inesperado',
@@ -297,194 +287,38 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     }
   }
 
+  // ✅ NUEVO: Método para sincronización manual desde la vista
+  Future<void> _sincronizarManual() async {
+    AlertHelper.showLoading(context: context, text: 'Sincronizando registros...');
 
+    try {
+      final resultado = await _salidaLlegadaService.sincronizarRegistrosPendientes();
 
-  Widget _buildProvinciaAutocomplete() {
-    return Autocomplete<String>(
-      optionsBuilder: (TextEditingValue textEditingValue) {
-        if (textEditingValue.text.isEmpty) {
-          return _provincias;
-        }
-        return _provincias.where((String option) {
-          return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-        });
-      },
-      onSelected: (String selection) {
-        setState(() {
-          _provinciaSeleccionada = selection;
-        });
-        _onProvinciaSeleccionada(selection);
-      },
-      fieldViewBuilder: (
-          BuildContext context,
-          TextEditingController textEditingController,
-          FocusNode focusNode,
-          VoidCallback onFieldSubmitted,
-          ) {
-        // Sincronizar el controlador con el valor seleccionado
-        if (_provinciaSeleccionada != null && textEditingController.text.isEmpty) {
-          textEditingController.text = _provinciaSeleccionada!;
-        }
+      if (mounted) AlertHelper.closeLoading(context);
 
-        return TextFormField(
-          controller: textEditingController,
-          focusNode: focusNode,
-          decoration: InputDecoration(
-            labelText: 'Provincia/Municipio *',
-            hintText: 'Escriba para buscar...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            suffixIcon: _provinciaSeleccionada != null
-                ? IconButton(
-              icon: const Icon(Icons.clear, size: 20),
-              onPressed: () {
-                textEditingController.clear();
-                setState(() {
-                  _provinciaSeleccionada = null;
-                  _puntoEmpadronamientoSeleccionado = null;
-                  _puntosEmpadronamiento = [];
-                });
-              },
-            )
-                : null,
-          ),
+      if (resultado['success']) {
+        AlertHelper.showSuccess(
+          context: context,
+          title: '✅ Sincronización',
+          text: resultado['message'],
         );
-      },
-      optionsViewBuilder: (
-          BuildContext context,
-          AutocompleteOnSelected<String> onSelected,
-          Iterable<String> options,
-          ) {
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 4.0,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final String option = options.elementAt(index);
-                  return ListTile(
-                    title: Text(
-                      option,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () {
-                      onSelected(option);
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
+      } else {
+        AlertHelper.showError(
+          context: context,
+          title: '❌ Sincronización',
+          text: resultado['message'],
         );
-      },
-    );
+      }
+    } catch (e) {
+      if (mounted) AlertHelper.closeLoading(context);
+      AlertHelper.showError(
+        context: context,
+        title: 'Error',
+        text: 'Error en sincronización: ${e.toString()}',
+      );
+    }
   }
 
-  Widget _buildPuntoEmpadronamientoAutocomplete() {
-    return Autocomplete<String>(
-      optionsBuilder: (TextEditingValue textEditingValue) {
-        if (textEditingValue.text.isEmpty) {
-          return _puntosEmpadronamiento;
-        }
-        return _puntosEmpadronamiento.where((String option) {
-          return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-        });
-      },
-      onSelected: (String selection) {
-        setState(() {
-          _puntoEmpadronamientoSeleccionado = selection;
-        });
-        _onPuntoEmpadronamientoSeleccionado(selection);
-      },
-      fieldViewBuilder: (
-          BuildContext context,
-          TextEditingController textEditingController,
-          FocusNode focusNode,
-          VoidCallback onFieldSubmitted,
-          ) {
-        // Sincronizar el controlador con el valor seleccionado
-        if (_puntoEmpadronamientoSeleccionado != null && textEditingController.text.isEmpty) {
-          textEditingController.text = _puntoEmpadronamientoSeleccionado!;
-        }
-
-        return TextFormField(
-          controller: textEditingController,
-          focusNode: focusNode,
-          enabled: _provinciaSeleccionada != null,
-          decoration: InputDecoration(
-            labelText: 'Punto de Empadronamiento *',
-            hintText: _provinciaSeleccionada != null
-                ? 'Escriba para buscar...'
-                : 'Primero seleccione una provincia',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            suffixIcon: _puntoEmpadronamientoSeleccionado != null
-                ? IconButton(
-              icon: const Icon(Icons.clear, size: 20),
-              onPressed: () {
-                textEditingController.clear();
-                setState(() {
-                  _puntoEmpadronamientoSeleccionado = null;
-                  _puntoEmpadronamientoId = null;
-                });
-              },
-            )
-                : null,
-          ),
-        );
-      },
-      optionsViewBuilder: (
-          BuildContext context,
-          AutocompleteOnSelected<String> onSelected,
-          Iterable<String> options,
-          ) {
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 4.0,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final String option = options.elementAt(index);
-                  return ListTile(
-                    title: Text(
-                      option,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
-                    ),
-                    onTap: () {
-                      onSelected(option);
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ✅ NUEVO: Widget para información de GPS
   Widget _buildGPSInfo() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -513,6 +347,17 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
                   color: _gpsActivado ? Colors.green : Colors.orange,
                 ),
               ),
+              const Spacer(),
+              if (!_gpsActivado)
+                TextButton.icon(
+                  onPressed: _verificarEstadoGPS,
+                  icon: Icon(Icons.refresh, size: 16),
+                  label: Text('Verificar'),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -530,6 +375,20 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
                   SizedBox(width: 8),
                   Text('Capturando ubicación...', style: TextStyle(fontSize: 12)),
                 ],
+              ),
+            ),
+          if (!_locationCaptured && _gpsActivado)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: ElevatedButton.icon(
+                onPressed: _capturarGeolocalizacion,
+                icon: Icon(Icons.location_on, size: 16),
+                label: Text('Capturar ubicación'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: Size(double.infinity, 36),
+                  backgroundColor: Colors.blue.shade100,
+                  foregroundColor: Colors.blue.shade800,
+                ),
               ),
             ),
         ],
@@ -553,6 +412,12 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
             onPressed: _verificarEstadoGPS,
             tooltip: _gpsActivado ? 'GPS Activado' : 'GPS Desactivado',
           ),
+          // ✅ NUEVO: Botón de sincronización manual
+          IconButton(
+            icon: Icon(Icons.sync, color: Colors.white),
+            onPressed: _sincronizarManual,
+            tooltip: 'Sincronizar registros pendientes',
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -564,22 +429,29 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
               _buildUserInfoCard(),
               const SizedBox(height: 24),
 
-              // ✅ NUEVO: Campos de empadronamiento
+              // ✅ NUEVO: Monitor de sincronización
+              _buildSyncMonitor(),
+
+              const SizedBox(height: 24),
+
+              // Campos de empadronamiento
               _buildCamposEmpadronamiento(),
 
               const SizedBox(height: 24),
-              // _buildDestinoField(),
-              // const SizedBox(height: 24),
+
+              // Observaciones
               _buildObservacionesField(),
+
               const SizedBox(height: 24),
 
-              // ✅ MODIFICADO: Información de coordenadas con GPS
+              // Información de GPS
               _buildGPSInfo(),
 
-              //const SizedBox(height: 24),
-              //_buildSincronizacionSwitch(),
               const SizedBox(height: 24),
+
+              // Botón de registro
               _buildRegistrarButton(),
+
               const SizedBox(height: 50),
             ],
           ),
@@ -588,7 +460,175 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-  // Los métodos existentes se mantienen igual...
+  // ✅ NUEVO: Widget para monitor de sincronización
+  Widget _buildSyncMonitor() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_sync, color: Colors.blue.shade700, size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  'Estado de Sincronización',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            FutureBuilder<Map<String, dynamic>>(
+              future: _salidaLlegadaService.obtenerEstadisticasSincronizacion(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator(strokeWidth: 2));
+                }
+
+                if (snapshot.hasError) {
+                  return Text(
+                    'Error cargando estadísticas',
+                    style: TextStyle(color: Colors.red),
+                  );
+                }
+
+                final stats = snapshot.data ?? {};
+                final pendientes = stats['pendientes'] ?? 0;
+                final total = stats['total'] ?? 0;
+                final sincronizados = stats['sincronizados'] ?? 0;
+                final porcentaje = stats['porcentaje'] ?? 0;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildStatItem(
+                          label: 'Total',
+                          value: total.toString(),
+                          icon: Icons.list,
+                          color: Colors.blue,
+                        ),
+                        _buildStatItem(
+                          label: 'Sincronizados',
+                          value: sincronizados.toString(),
+                          icon: Icons.check_circle,
+                          color: Colors.green,
+                        ),
+                        _buildStatItem(
+                          label: 'Pendientes',
+                          value: pendientes.toString(),
+                          icon: Icons.pending,
+                          color: pendientes > 0 ? Colors.orange : Colors.grey,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    if (pendientes > 0)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Progreso: $porcentaje%',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              if (pendientes > 0)
+                                TextButton(
+                                  onPressed: _sincronizarManual,
+                                  child: Text(
+                                    'Sincronizar ahora',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: Size.zero,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: porcentaje / 100,
+                            backgroundColor: Colors.grey.shade300,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              porcentaje == 100 ? Colors.green : Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    if (pendientes == 0 && total > 0)
+                      Text(
+                        '✅ Todo sincronizado',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+
+                    if (total == 0)
+                      Text(
+                        '📊 No hay registros de despliegue',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildUserInfoCard() {
     return Container(
       width: double.infinity,
@@ -601,12 +641,16 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Información del Operador',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          const Text(
+            'Información del Operador',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           Text('Usuario: $_userName', style: const TextStyle(fontSize: 13)),
-          Text('ID Operador: ${widget.idOperador}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+          Text(
+            'ID Operador: ${widget.idOperador}',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          ),
           Text('Email: $_userEmail', style: const TextStyle(fontSize: 13)),
           Text('Rol: $_userRole', style: const TextStyle(fontSize: 13)),
         ],
@@ -614,85 +658,27 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-  // Widget _buildDestinoField() {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       const Text('Destino *',
-  //           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-  //       const SizedBox(height: 8),
-  //       TextField(
-  //         controller: _destino,
-  //         decoration: InputDecoration(
-  //           labelText: 'Ingrese el destino',
-  //           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-  //           contentPadding:
-  //           const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-  //         ),
-  //       ),
-  //     ],
-  //   );
-  // }
-
   Widget _buildObservacionesField() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Observaciones',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Text(
+          'Observaciones',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _observacionesController,
           decoration: InputDecoration(
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             hintText: 'Ingrese observaciones adicionales...',
+            labelText: 'Observaciones (opcional)',
           ),
           maxLines: 3,
         ),
       ],
     );
   }
-
-  // Widget _buildSincronizacionSwitch() {
-  //   return Container(
-  //     padding: const EdgeInsets.all(16),
-  //     decoration: BoxDecoration(
-  //       color: Colors.blue.shade50,
-  //       borderRadius: BorderRadius.circular(8),
-  //       border: Border.all(color: Colors.blue.shade200),
-  //     ),
-  //     child: Row(
-  //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  //       children: [
-  //         Expanded(
-  //           child: Column(
-  //             crossAxisAlignment: CrossAxisAlignment.start,
-  //             children: [
-  //               const Text('Sincronizar con Servidor',
-  //                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-  //               const SizedBox(height: 4),
-  //               Text(
-  //                 _sincronizarConServidor
-  //                     ? '📤 Enviar inmediatamente'
-  //                     : '💾 Solo guardar localmente',
-  //                 style: TextStyle(
-  //                     fontSize: 12,
-  //                     color: _sincronizarConServidor
-  //                         ? Colors.green.shade700
-  //                         : Colors.orange.shade700),
-  //               ),
-  //             ],
-  //           ),
-  //         ),
-  //         Switch(
-  //           value: _sincronizarConServidor,
-  //           onChanged: (value) => setState(() => _sincronizarConServidor = value),
-  //           activeColor: Colors.blue,
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
 
   Widget _buildRegistrarButton() {
     return SizedBox(
@@ -704,14 +690,16 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 2,
         ),
         icon: _isLoading
             ? const SizedBox(
           height: 20,
           width: 20,
           child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          ),
         )
             : const Icon(Icons.save, size: 20),
         label: Text(
@@ -722,33 +710,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-  void _mostrarError(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
-  void _mostrarExito(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
   void _limpiarFormulario() {
     _observacionesController.clear();
-    //_destino.clear();
     setState(() {
-      _sincronizarConServidor = true;
       _coordenadas = 'No capturadas';
       _provinciaSeleccionada = null;
       _puntoEmpadronamientoSeleccionado = null;
@@ -762,13 +726,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   @override
   void dispose() {
     _observacionesController.dispose();
-    //_destino.dispose();
     super.dispose();
   }
 
-  // ✅ CAMBIADO: De Autocomplete a Dropdown simple para Punto de Empadronamiento
-  // ✅ ACTUALIZADO: Usar Dropdown en lugar de Autocomplete
-  // ✅ ACTUALIZADO: Usar Dropdown en lugar de Autocomplete
   Widget _buildCamposEmpadronamiento() {
     return Card(
       elevation: 2,
@@ -786,32 +746,35 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // ✅ CAMBIADO: Provincia con Dropdown
             _buildProvinciaDropdown(),
-
             const SizedBox(height: 12),
-
-            // ✅ CAMBIADO: Punto de Empadronamiento con Dropdown
             _buildPuntoEmpadronamientoDropdown(),
           ],
         ),
       ),
     );
   }
-// ✅ CAMBIADO: De Autocomplete a Dropdown simple para Provincia
+
   Widget _buildProvinciaDropdown() {
     return DropdownButtonFormField<String>(
       value: _provinciaSeleccionada,
       decoration: InputDecoration(
         labelText: 'Provincia/Municipio *',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        suffixIcon: _provinciaSeleccionada != null
+            ? IconButton(
+          icon: const Icon(Icons.clear, size: 20),
+          onPressed: () {
+            setState(() {
+              _provinciaSeleccionada = null;
+              _puntoEmpadronamientoSeleccionado = null;
+              _puntosEmpadronamiento = [];
+              _puntoEmpadronamientoId = null;
+            });
+          },
+        )
+            : null,
       ),
       isExpanded: true,
       items: _provincias.map((String provincia) {
@@ -838,26 +801,29 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
     );
   }
 
-
-  // ✅ CORREGIDO: Sin el parámetro 'enabled'
   Widget _buildPuntoEmpadronamientoDropdown() {
     return DropdownButtonFormField<String>(
       value: _puntoEmpadronamientoSeleccionado,
       decoration: InputDecoration(
         labelText: 'Punto de Empadronamiento *',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         hintText: _provinciaSeleccionada != null
             ? (_puntosEmpadronamiento.isEmpty ? 'Cargando puntos...' : 'Seleccione un punto')
             : 'Primero seleccione una provincia',
+        suffixIcon: _puntoEmpadronamientoSeleccionado != null
+            ? IconButton(
+          icon: const Icon(Icons.clear, size: 20),
+          onPressed: () {
+            setState(() {
+              _puntoEmpadronamientoSeleccionado = null;
+              _puntoEmpadronamientoId = null;
+            });
+          },
+        )
+            : null,
       ),
       isExpanded: true,
-      // ❌ ELIMINADO: enabled: _provinciaSeleccionada != null && _puntosEmpadronamiento.isNotEmpty,
       items: _puntosEmpadronamiento.map((String punto) {
         return DropdownMenuItem<String>(
           value: punto,
@@ -868,7 +834,6 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
           ),
         );
       }).toList(),
-      // ✅ CORREGIDO: Controlar habilitación mediante onChanged
       onChanged: (_provinciaSeleccionada != null && _puntosEmpadronamiento.isNotEmpty)
           ? (String? nuevoPunto) {
         setState(() {
@@ -876,7 +841,7 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
         });
         _onPuntoEmpadronamientoSeleccionado(nuevoPunto);
       }
-          : null, // Si es null, el dropdown se deshabilita automáticamente
+          : null,
       validator: (value) {
         if (_provinciaSeleccionada != null && (value == null || value.isEmpty)) {
           return 'Seleccione un punto de empadronamiento';
@@ -885,5 +850,4 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       },
     );
   }
-
 }

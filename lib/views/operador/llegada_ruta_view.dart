@@ -172,80 +172,6 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     }
   }
 
-  // Método principal para registrar la llegada
-  Future<void> _registrarLlegada() async {
-    if (_puntoEmpadronamientoIdSeleccionado == null || _puntoEmpadronamientoIdSeleccionado == 0) {
-      AlertHelper.showError(context: context, title: 'Dato Requerido', text: 'Debe seleccionar un punto de empadronamiento.');
-      return;
-    }
-
-    if (_provinciaSeleccionada == null || _provinciaSeleccionada!.isEmpty) {
-      AlertHelper.showError(context: context, title: 'Dato Requerido', text: 'Debe seleccionar una provincia.');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      if (_gpsActivado && !_locationCaptured) {
-        await _capturarGeolocalizacion();
-      }
-
-      final ahora = DateTime.now().toLocal();
-      final fechaSinZ = ahora.toIso8601String().replaceAll('Z', '');
-
-      final nuevoRegistro = RegistroDespliegue(
-        id: null,
-        latitud: _latitud ?? '0',
-        longitud: _longitud ?? '0',
-        descripcionReporte: null,
-        estado: 'LLEGADA',
-        sincronizar: _sincronizarConServidor,
-        observaciones: _observacionesController.text.isNotEmpty ? _observacionesController.text : 'Sin observaciones',
-        incidencias: '',
-        fechaHora: fechaSinZ,
-        operadorId: widget.idOperador,
-        sincronizado: false,
-        centroEmpadronamiento: _puntoEmpadronamientoIdSeleccionado,
-        fechaSincronizacion: null,
-      );
-
-      final nuevoId = await _databaseService.insertRegistroDespliegue(nuevoRegistro);
-      print('✅ Nuevo registro de llegada guardado localmente con ID: $nuevoId');
-
-      final tieneInternet = await SyncService().verificarConexion();
-
-      if (tieneInternet && _sincronizarConServidor) {
-        final accessToken = await _authService.getAccessToken();
-        if (accessToken == null || accessToken.isEmpty) {
-          AlertHelper.showError(context: context, title: 'Error de Autenticación', text: 'No se pudo obtener el token.');
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        final enviado = await _enviarRegistroAlServidor(nuevoRegistro.toJsonForApi(), accessToken);
-
-        if (enviado) {
-          await _databaseService.eliminarRegistroDespliegue(nuevoId);
-          AlertHelper.showSuccess(context: context, title: '¡Llegada Registrada!', text: 'La llegada se ha sincronizado correctamente.');
-        } else {
-          AlertHelper.showWarning(context: context, title: 'Sincronización Fallida', text: 'El registro se guardó localmente. Se intentará sincronizar más tarde.');
-        }
-      } else if (!tieneInternet) {
-        AlertHelper.showInfo(context: context, title: 'Registro Guardado Localmente', text: 'No hay conexión. El registro se sincronizará automáticamente.');
-      } else {
-        AlertHelper.showSuccess(context: context, title: 'Llegada Registrada Localmente', text: 'La llegada se guardó en el dispositivo.');
-      }
-
-      _limpiarFormulario();
-    } catch (e) {
-      print('❌ Error al registrar llegada: $e');
-      AlertHelper.showError(context: context, title: 'Error Inesperado', text: 'Ocurrió un error al registrar la llegada: ${e.toString()}');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   void _limpiarFormulario() {
     _observacionesController.clear();
     setState(() {
@@ -260,31 +186,6 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     });
   }
 
-  // Envía un registro al servidor
-  Future<bool> _enviarRegistroAlServidor(Map<String, dynamic> jsonData, String accessToken) async {
-    try {
-      const url = '${Enviroment.apiUrlDev}/registrosdespliegue/';
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $accessToken',
-        },
-        body: jsonEncode(jsonData),
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Registro enviado exitosamente al servidor');
-        return true;
-      } else {
-        print('❌ Error del servidor: ${response.statusCode}, Body: ${response.body}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ Error de conexión al enviar: $e');
-      return false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -478,6 +379,135 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
       ),
     );
   }
+
+  // Reemplaza el método _registrarLlegada existente con esta versión corregida
+
+  // Método principal para registrar la llegada
+  Future<void> _registrarLlegada() async {
+    // --- 1. Validaciones iniciales del formulario ---
+    if (_puntoEmpadronamientoIdSeleccionado == null || _puntoEmpadronamientoIdSeleccionado == 0) {
+      AlertHelper.showError(context: context, title: 'Dato Requerido', text: 'Debe seleccionar un punto de empadronamiento.');
+      return;
+    }
+
+    if (_provinciaSeleccionada == null || _provinciaSeleccionada!.isEmpty) {
+      AlertHelper.showError(context: context, title: 'Dato Requerido', text: 'Debe seleccionar una provincia.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // --- 2. Captura de geolocalización si es necesario ---
+      if (_gpsActivado && !_locationCaptured) {
+        final capturada = await _capturarGeolocalizacion();
+        if (!capturada && _gpsActivado) {
+          AlertHelper.showWarning(context: context, title: 'Ubicación no Capturada', text: 'No se pudo obtener la ubicación. El registro se guardará con coordenadas 0,0.');
+        }
+      }
+
+      // --- 3. Construcción del objeto de registro ---
+      final ahora = DateTime.now().toLocal();
+      final fechaSinZ = ahora.toIso8601String().replaceAll('Z', '');
+
+      final nuevoRegistro = RegistroDespliegue(
+        id: null, // El ID se asigna automáticamente en la BD local
+        latitud: _latitud ?? '0.0', // Usar 0.0 como valor por defecto
+        longitud: _longitud ?? '0.0',
+        descripcionReporte: null,
+        estado: 'LLEGADA',
+        sincronizar: _sincronizarConServidor,
+        observaciones: _observacionesController.text.trim().isNotEmpty
+            ? _observacionesController.text.trim()
+            : 'Sin observaciones',
+        incidencias: '',
+        fechaHora: fechaSinZ,
+        operadorId: widget.idOperador,
+        sincronizado: false,
+        centroEmpadronamiento: _puntoEmpadronamientoIdSeleccionado,
+        fechaSincronizacion: null,
+      );
+
+      // --- 4. Lógica de envío según la conexión a internet ---
+      final tieneInternet = await SyncService().verificarConexion();
+
+      if (tieneInternet && _sincronizarConServidor) {
+        // ✅ CASO 1: HAY INTERNET -> Intentar enviar directamente al servidor
+        print('🌐 Conexión detectada. Intentando envío directo al servidor.');
+
+        final accessToken = await _authService.getAccessToken();
+        if (accessToken == null || accessToken.isEmpty) {
+          throw Exception('No se pudo obtener el token de autenticación.');
+        }
+
+        final enviado = await _enviarRegistroAlServidor(nuevoRegistro.toJsonForApi(), accessToken);
+
+        if (enviado) {
+          // Si se envía con éxito, solo mostramos el mensaje y limpiamos. No se guarda nada localmente.
+          AlertHelper.showSuccess(context: context, title: '¡Llegada Registrada!', text: 'La llegada se ha sincronizado correctamente.');
+        } else {
+          // Si falla el envío (ej. error 500 del servidor), lo guardamos localmente como respaldo.
+          print('⚠️ El envío al servidor falló. Guardando registro localmente como respaldo.');
+          await _databaseService.insertRegistroDespliegue(nuevoRegistro);
+          AlertHelper.showWarning(context: context, title: 'Sincronización Fallida', text: 'El registro se guardó localmente para un intento posterior.');
+        }
+
+      } else {
+        // ❌ CASO 2: NO HAY INTERNET -> Guardar directamente en la base de datos local
+        print('🔌 Sin conexión. Guardando registro directamente en la base de datos local.');
+        await _databaseService.insertRegistroDespliegue(nuevoRegistro);
+        if (!tieneInternet) {
+          AlertHelper.showInfo(context: context, title: 'Registro Guardado Localmente', text: 'No hay conexión. El registro se sincronizará automáticamente más tarde.');
+        } else {
+          AlertHelper.showSuccess(context: context, title: 'Llegada Registrada Localmente', text: 'La llegada se guardó en el dispositivo.');
+        }
+      }
+
+      // --- 5. Limpieza del formulario ---
+      _limpiarFormulario();
+
+    } catch (e) {
+      print('❌ Error al registrar llegada: $e');
+      AlertHelper.showError(context: context, title: 'Error Inesperado', text: 'Ocurrió un error al registrar la llegada: ${e.toString()}');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+// Reemplaza también el método _enviarRegistroAlServidor para corregir la URL
+
+  // Envía un registro al servidor
+  Future<bool> _enviarRegistroAlServidor(Map<String, dynamic> jsonData, String accessToken) async {
+    try {
+      // ✅ CORRECCIÓN: Se elimina la barra final para evitar duplicados
+      const url = '${Enviroment.apiUrlDev}registrosdespliegue/';
+      print('📤 Enviando registro de llegada a: $url');
+      print('📦 Datos: ${jsonEncode(jsonData)}');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode(jsonData),
+      ).timeout(const Duration(seconds: 30));
+
+      print('📥 Respuesta del servidor - Status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('✅ Registro enviado exitosamente al servidor');
+        return true;
+      } else {
+        print('❌ Error del servidor: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error de conexión al enviar registro de llegada: $e');
+      return false;
+    }
+  }
+
 
   @override
   void dispose() {

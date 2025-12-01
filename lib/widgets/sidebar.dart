@@ -1,5 +1,6 @@
 // lib/widgets/sidebar.dart (ACTUALIZADO)
 import 'package:flutter/material.dart';
+import '../views/operador/historial_reportes_diarios_view.dart';
 import '../views/operador/reporte_historial_view.dart';
 
 class Sidebar extends StatelessWidget {
@@ -92,8 +93,8 @@ class Sidebar extends StatelessWidget {
               context: context,
               icon: Icons.history,
               label: 'Historial de Reportes',
-              destination: const ReporteHistorialView(),
-              // destination: const HistorialReportesDiariosView(),
+              // destination: const ReporteHistorialView(),
+              destination: const HistorialReportesDiariosView(),
             ),
           ]
           // Menú para Operador Urbano
@@ -109,7 +110,8 @@ class Sidebar extends StatelessWidget {
               context: context,
               icon: Icons.history,
               label: 'Historial de Reportes',
-              destination: const ReporteHistorialView(),
+              // destination: const ReporteHistorialView(),
+              destination: const HistorialReportesDiariosView(),
             ),
           ]
           // Menú para Soporte

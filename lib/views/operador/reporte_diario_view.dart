@@ -313,195 +313,195 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     }
   }
 
-  void _enviarReporte() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (!_gpsActivado && _ubicacionRequerida) {
-      _mostrarDialogoActivacionGPS();
-      return;
-    }
-
-    // ✅ NUEVA VALIDACIÓN: Validar rangos de R y C antes de enviar
-    if (_camposR) {
-      final rInicial = int.tryParse(_rInicialiController.text) ?? 0;
-      final rFinal = int.tryParse(_rFinalController.text) ?? 0;
-      if (rFinal < rInicial) {
-        await _mostrarAlertaError(
-            'El valor final de R no puede ser menor que el valor inicial.');
-        return;
-      }
-    }
-
-    if (_camposC) {
-      final cInicial = int.tryParse(_cInicialiController.text) ?? 0;
-      final cFinal = int.tryParse(_cFinalController.text) ?? 0;
-      if (cFinal < cInicial) {
-        await _mostrarAlertaError(
-            'El valor final de C no puede ser menor que el valor inicial.');
-        return;
-      }
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      if (_userData?.operador == null) {
-        throw Exception('Datos de operador no disponibles');
-      }
-
-      bool ubicacionCapturada = false;
-      if (_gpsActivado && _ubicacionRequerida) {
-        ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
-      }
-
-      final ahora = DateTime.now();
-      final fechaHora = ahora.toIso8601String();
-
-      // --- Lógica condicional para 'R' ---
-      String rInicialCompleto;
-      String rFinalCompleto;
-      int registroR;
-
-      if (!_camposR) {
-        print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
-        rInicialCompleto = _buildFormatoR('0000', '0');
-        rFinalCompleto = _buildFormatoR('0000', '0');
-        registroR = 0;
-      } else {
-        rInicialCompleto = _buildFormatoR(
-          _rInicialiController.text.padLeft(4, '0'),
-          _rInicialDigitoFinalController.text.isEmpty
-              ? '0'
-              : _rInicialDigitoFinalController.text,
-        );
-
-        rFinalCompleto = _buildFormatoR(
-          _rFinalController.text.padLeft(4, '0'),
-          _rFinalDigitoFinalController.text.isEmpty
-              ? '0'
-              : _rFinalDigitoFinalController.text,
-        );
-        registroR = diferenciaR;
-      }
-
-      // --- Lógica condicional para 'C' ---
-      String cInicialCompleto;
-      String cFinalCompleto;
-      int registroC;
-
-      if (!_camposC) {
-        print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
-        cInicialCompleto = _buildFormatoC('0000', '0');
-        cFinalCompleto = _buildFormatoC('0000', '0');
-        registroC = 0;
-      } else {
-        cInicialCompleto = _buildFormatoC(
-          _cInicialiController.text.padLeft(4, '0'),
-          _cInicialDigitoFinalController.text.isEmpty
-              ? '0'
-              : _cInicialDigitoFinalController.text,
-        );
-        cFinalCompleto = _buildFormatoC(
-          _cFinalController.text.padLeft(4, '0'),
-          _cFinalDigitoFinalController.text.isEmpty
-              ? '0'
-              : _cFinalDigitoFinalController.text,
-        );
-        registroC = diferenciaC;
-      }
-
-      final reporteData = {
-        'fecha_reporte': _fechaController.text,
-        'contador_inicial_c': cInicialCompleto,
-        'contador_final_c': cFinalCompleto,
-        'registro_c': registroC,
-        'contador_inicial_r': rInicialCompleto,
-        'contador_final_r': rFinalCompleto,
-        'registro_r': registroR,
-        'incidencias': _incidenciasController.text,
-        'observaciones': _observacionesController.text,
-        'operador': _userData!.operador!.idOperador,
-        'estacion': _userData!.operador!.idEstacion,
-        'centro_empadronamiento': _puntoEmpadronamientoId,
-        'estado': 'ENVIO REPORTE',
-        'sincronizar': true,
-
-        // ✅ CORREGIDO: Usar nombres consistentes
-        'observacionC': _cObservacionesController.text,
-        'observacionR': _rObservacionesController.text,
-        'saltosenC': int.tryParse(_cSaltosController.text) ?? 0,
-        'saltosenR': int.tryParse(_rSaltosController.text) ??
-            0, // ✅ CORREGIDO: usar _rSaltosController
-      };
-
-      final despliegueData = {
-        'destino':
-        'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
-        'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
-        'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
-        'descripcion_reporte': null,
-        'estado': 'REPORTE ENVIADO',
-        'sincronizar': true,
-        'observaciones':
-        'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
-        'incidencias': _ubicacionRequerida
-            ? (ubicacionCapturada
-            ? 'Ubicación capturada correctamente'
-            : 'No se pudo capturar ubicación')
-            : 'Ubicación no requerida para este reporte',
-        'fecha_hora': fechaHora,
-        'operador': _userData!.operador!.idOperador,
-        'sincronizado': false,
-      };
-
-      print('📤 Enviando reporte con formatos:');
-      print('📍 R Inicial: $rInicialCompleto');
-      print('📍 R Final: $rFinalCompleto');
-      print('📍 Registro R: $registroR');
-      print('📍 C Inicial: $cInicialCompleto');
-      print('📍 C Final: $cFinalCompleto');
-      print('📍 Registro C: $registroC');
-      print('📍 Punto Empadronamiento ID: $_puntoEmpadronamientoId');
-
-      final result = await _syncService.saveReporteGeolocalizacion(
-        reporteData: reporteData,
-        despliegueData: despliegueData,
-      );
-
-      if (!mounted) return;
-
-      // ✅ NUEVO: Mostrar alerta de confirmación
-      await _mostrarAlertaResultado(
-        exito: result['success'],
-        guardadoLocal: result['saved_locally'] == true,
-        ubicacionCapturada: ubicacionCapturada,
-        ubicacionRequerida: _ubicacionRequerida,
-        mensaje: result['message'],
-      );
-
-      if (result['success']) {
-        _cleanFormulario();
-        setState(() {
-          _latitud = null;
-          _longitud = null;
-          _coordenadas = 'No capturadas';
-          _locationCaptured = false;
-          _ubicacionRequerida = true;
-          _camposR = false;
-          _camposC = false;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      // ✅ NUEVO: Mostrar alerta de error
-      await _mostrarAlertaError('Error al enviar reporte: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
+  // void _enviarReporte() async {
+  //   if (!_formKey.currentState!.validate()) return;
+  //
+  //   if (!_gpsActivado && _ubicacionRequerida) {
+  //     _mostrarDialogoActivacionGPS();
+  //     return;
+  //   }
+  //
+  //   // ✅ NUEVA VALIDACIÓN: Validar rangos de R y C antes de enviar
+  //   if (_camposR) {
+  //     final rInicial = int.tryParse(_rInicialiController.text) ?? 0;
+  //     final rFinal = int.tryParse(_rFinalController.text) ?? 0;
+  //     if (rFinal < rInicial) {
+  //       await _mostrarAlertaError(
+  //           'El valor final de R no puede ser menor que el valor inicial.');
+  //       return;
+  //     }
+  //   }
+  //
+  //   if (_camposC) {
+  //     final cInicial = int.tryParse(_cInicialiController.text) ?? 0;
+  //     final cFinal = int.tryParse(_cFinalController.text) ?? 0;
+  //     if (cFinal < cInicial) {
+  //       await _mostrarAlertaError(
+  //           'El valor final de C no puede ser menor que el valor inicial.');
+  //       return;
+  //     }
+  //   }
+  //
+  //   setState(() => _isSubmitting = true);
+  //
+  //   try {
+  //     if (_userData?.operador == null) {
+  //       throw Exception('Datos de operador no disponibles');
+  //     }
+  //
+  //     bool ubicacionCapturada = false;
+  //     if (_gpsActivado && _ubicacionRequerida) {
+  //       ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
+  //     }
+  //
+  //     final ahora = DateTime.now();
+  //     final fechaHora = ahora.toIso8601String();
+  //
+  //     // --- Lógica condicional para 'R' ---
+  //     String rInicialCompleto;
+  //     String rFinalCompleto;
+  //     int registroR;
+  //
+  //     if (!_camposR) {
+  //       print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
+  //       rInicialCompleto = _buildFormatoR('0000', '0');
+  //       rFinalCompleto = _buildFormatoR('0000', '0');
+  //       registroR = 0;
+  //     } else {
+  //       rInicialCompleto = _buildFormatoR(
+  //         _rInicialiController.text.padLeft(4, '0'),
+  //         _rInicialDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _rInicialDigitoFinalController.text,
+  //       );
+  //
+  //       rFinalCompleto = _buildFormatoR(
+  //         _rFinalController.text.padLeft(4, '0'),
+  //         _rFinalDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _rFinalDigitoFinalController.text,
+  //       );
+  //       registroR = diferenciaR;
+  //     }
+  //
+  //     // --- Lógica condicional para 'C' ---
+  //     String cInicialCompleto;
+  //     String cFinalCompleto;
+  //     int registroC;
+  //
+  //     if (!_camposC) {
+  //       print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
+  //       cInicialCompleto = _buildFormatoC('0000', '0');
+  //       cFinalCompleto = _buildFormatoC('0000', '0');
+  //       registroC = 0;
+  //     } else {
+  //       cInicialCompleto = _buildFormatoC(
+  //         _cInicialiController.text.padLeft(4, '0'),
+  //         _cInicialDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _cInicialDigitoFinalController.text,
+  //       );
+  //       cFinalCompleto = _buildFormatoC(
+  //         _cFinalController.text.padLeft(4, '0'),
+  //         _cFinalDigitoFinalController.text.isEmpty
+  //             ? '0'
+  //             : _cFinalDigitoFinalController.text,
+  //       );
+  //       registroC = diferenciaC;
+  //     }
+  //
+  //     final reporteData = {
+  //       'fecha_reporte': _fechaController.text,
+  //       'contador_inicial_c': cInicialCompleto,
+  //       'contador_final_c': cFinalCompleto,
+  //       'registro_c': registroC,
+  //       'contador_inicial_r': rInicialCompleto,
+  //       'contador_final_r': rFinalCompleto,
+  //       'registro_r': registroR,
+  //       'incidencias': _incidenciasController.text,
+  //       'observaciones': _observacionesController.text,
+  //       'operador': _userData!.operador!.idOperador,
+  //       'estacion': _userData!.operador!.idEstacion,
+  //       'centro_empadronamiento': _puntoEmpadronamientoId,
+  //       'estado': 'ENVIO REPORTE',
+  //       'sincronizar': true,
+  //
+  //       // ✅ CORREGIDO: Usar nombres consistentes
+  //       'observacionC': _cObservacionesController.text,
+  //       'observacionR': _rObservacionesController.text,
+  //       'saltosenC': int.tryParse(_cSaltosController.text) ?? 0,
+  //       'saltosenR': int.tryParse(_rSaltosController.text) ??
+  //           0, // ✅ CORREGIDO: usar _rSaltosController
+  //     };
+  //
+  //     final despliegueData = {
+  //       'destino':
+  //       'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
+  //       'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
+  //       'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
+  //       'descripcion_reporte': null,
+  //       'estado': 'REPORTE ENVIADO',
+  //       'sincronizar': true,
+  //       'observaciones':
+  //       'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
+  //       'incidencias': _ubicacionRequerida
+  //           ? (ubicacionCapturada
+  //           ? 'Ubicación capturada correctamente'
+  //           : 'No se pudo capturar ubicación')
+  //           : 'Ubicación no requerida para este reporte',
+  //       'fecha_hora': fechaHora,
+  //       'operador': _userData!.operador!.idOperador,
+  //       'sincronizado': false,
+  //     };
+  //
+  //     print('📤 Enviando reporte con formatos:');
+  //     print('📍 R Inicial: $rInicialCompleto');
+  //     print('📍 R Final: $rFinalCompleto');
+  //     print('📍 Registro R: $registroR');
+  //     print('📍 C Inicial: $cInicialCompleto');
+  //     print('📍 C Final: $cFinalCompleto');
+  //     print('📍 Registro C: $registroC');
+  //     print('📍 Punto Empadronamiento ID: $_puntoEmpadronamientoId');
+  //
+  //     final result = await _syncService.saveReporteGeolocalizacion(
+  //       reporteData: reporteData,
+  //       despliegueData: despliegueData,
+  //     );
+  //
+  //     if (!mounted) return;
+  //
+  //     // ✅ NUEVO: Mostrar alerta de confirmación
+  //     await _mostrarAlertaResultado(
+  //       exito: result['success'],
+  //       guardadoLocal: result['saved_locally'] == true,
+  //       ubicacionCapturada: ubicacionCapturada,
+  //       ubicacionRequerida: _ubicacionRequerida,
+  //       mensaje: result['message'],
+  //     );
+  //
+  //     if (result['success']) {
+  //       _cleanFormulario();
+  //       setState(() {
+  //         _latitud = null;
+  //         _longitud = null;
+  //         _coordenadas = 'No capturadas';
+  //         _locationCaptured = false;
+  //         _ubicacionRequerida = true;
+  //         _camposR = false;
+  //         _camposC = false;
+  //       });
+  //     }
+  //   } catch (e) {
+  //     if (!mounted) return;
+  //
+  //     // ✅ NUEVO: Mostrar alerta de error
+  //     await _mostrarAlertaError('Error al enviar reporte: $e');
+  //   } finally {
+  //     if (mounted) {
+  //       setState(() => _isSubmitting = false);
+  //     }
+  //   }
+  // }
 
   Widget _buildCamposEmpadronamiento() {
     return Card(
@@ -1804,108 +1804,108 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   }
 
   // ✅ NUEVO: Función para mostrar alerta de resultado
-  Future<void> _mostrarAlertaResultado({
-    required bool exito,
-    required bool guardadoLocal,
-    required bool ubicacionCapturada,
-    required bool ubicacionRequerida,
-    String? mensaje,
-  }) async {
-    String titulo;
-    String contenido;
-    Color colorFondo;
-    IconData icono;
-
-    if (exito) {
-      if (guardadoLocal) {
-        titulo = '📱 Reporte Guardado Localmente';
-        contenido = 'El reporte se ha guardado en el dispositivo. '
-            'Se sincronizará automáticamente cuando se detecte conexión a internet.';
-        colorFondo = Colors.orange.shade50;
-        icono = Icons.signal_wifi_off;
-      } else {
-        if (ubicacionRequerida) {
-          if (ubicacionCapturada) {
-            titulo = 'Reporte Enviado con Éxito';
-            contenido = 'El reporte ha sido enviado correctamente.';
-            colorFondo = Colors.green.shade50;
-            icono = Icons.check_circle;
-          } else {
-            //titulo = '⚠️ Reporte Enviado sin Ubicación';
-            titulo = '⚠️ Reporte Enviado ';
-            contenido = 'El reporte ha sido enviado.';
-            colorFondo = Colors.orange.shade50;
-            icono = Icons.location_off;
-          }
-        } else {
-          titulo = '✅ Reporte Enviado';
-          contenido = 'El reporte ha sido enviado correctamente '
-              'sin requerir ubicación.';
-          colorFondo = Colors.green.shade50;
-          icono = Icons.check_circle;
-        }
-      }
-    } else {
-      titulo = '❌ Error al Enviar';
-      contenido =
-          mensaje ?? 'Ha ocurrido un error al intentar enviar el reporte.';
-      colorFondo = Colors.red.shade50;
-      icono = Icons.error;
-    }
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: colorFondo,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Icon(icono,
-                  size: 28, color: _getColorIcono(exito, guardadoLocal)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  titulo,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _getColorTexto(exito, guardadoLocal),
-                    fontSize: 18,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            contenido,
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: _getColorBoton(exito, guardadoLocal),
-              ),
-              child: Text(
-                exito ? 'ACEPTAR' : 'REINTENTAR',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // Future<void> _mostrarAlertaResultado({
+  //   required bool exito,
+  //   required bool guardadoLocal,
+  //   required bool ubicacionCapturada,
+  //   required bool ubicacionRequerida,
+  //   String? mensaje,
+  // }) async {
+  //   String titulo;
+  //   String contenido;
+  //   Color colorFondo;
+  //   IconData icono;
+  //
+  //   if (exito) {
+  //     if (guardadoLocal) {
+  //       titulo = '📱 Reporte Guardado Localmente';
+  //       contenido = 'El reporte se ha guardado en el dispositivo. '
+  //           'Se sincronizará automáticamente cuando se detecte conexión a internet.';
+  //       colorFondo = Colors.orange.shade50;
+  //       icono = Icons.signal_wifi_off;
+  //     } else {
+  //       if (ubicacionRequerida) {
+  //         if (ubicacionCapturada) {
+  //           titulo = 'Reporte Enviado con Éxito';
+  //           contenido = 'El reporte ha sido enviado correctamente.';
+  //           colorFondo = Colors.green.shade50;
+  //           icono = Icons.check_circle;
+  //         } else {
+  //           //titulo = '⚠️ Reporte Enviado sin Ubicación';
+  //           titulo = '⚠️ Reporte Enviado ';
+  //           contenido = 'El reporte ha sido enviado.';
+  //           colorFondo = Colors.orange.shade50;
+  //           icono = Icons.location_off;
+  //         }
+  //       } else {
+  //         titulo = '✅ Reporte Enviado';
+  //         contenido = 'El reporte ha sido enviado correctamente '
+  //             'sin requerir ubicación.';
+  //         colorFondo = Colors.green.shade50;
+  //         icono = Icons.check_circle;
+  //       }
+  //     }
+  //   } else {
+  //     titulo = '❌ Error al Enviar';
+  //     contenido =
+  //         mensaje ?? 'Ha ocurrido un error al intentar enviar el reporte.';
+  //     colorFondo = Colors.red.shade50;
+  //     icono = Icons.error;
+  //   }
+  //
+  //   await showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (BuildContext context) {
+  //       return AlertDialog(
+  //         backgroundColor: colorFondo,
+  //         shape: RoundedRectangleBorder(
+  //           borderRadius: BorderRadius.circular(16),
+  //         ),
+  //         title: Row(
+  //           children: [
+  //             Icon(icono,
+  //                 size: 28, color: _getColorIcono(exito, guardadoLocal)),
+  //             const SizedBox(width: 12),
+  //             Expanded(
+  //               child: Text(
+  //                 titulo,
+  //                 style: TextStyle(
+  //                   fontWeight: FontWeight.bold,
+  //                   color: _getColorTexto(exito, guardadoLocal),
+  //                   fontSize: 18,
+  //                 ),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         content: Text(
+  //           contenido,
+  //           style: const TextStyle(
+  //             fontSize: 14,
+  //             height: 1.4,
+  //           ),
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () {
+  //               Navigator.of(context).pop();
+  //             },
+  //             style: TextButton.styleFrom(
+  //               foregroundColor: _getColorBoton(exito, guardadoLocal),
+  //             ),
+  //             child: Text(
+  //               exito ? 'ACEPTAR' : 'REINTENTAR',
+  //               style: const TextStyle(
+  //                 fontWeight: FontWeight.bold,
+  //               ),
+  //             ),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
 
 // ✅ NUEVO: Función para mostrar alerta de error
   Future<void> _mostrarAlertaError(String mensaje) async {

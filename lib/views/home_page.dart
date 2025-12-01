@@ -56,6 +56,7 @@ class _HomePageState extends State<HomePage> {
   /// ✅ CORREGIDO: Inicializar el servicio de sincronización
   Future<void> _initializeSyncService() async {
     try {
+
       final token = await _authService.getAccessToken();
       if (token != null) {
         _apiService = ApiService(accessToken: token);

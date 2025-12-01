@@ -35,6 +35,7 @@ class DatabaseService {
   Future<void> _createDatabase(Database db, int version) async {
     print('🗄️ Creando BD versión $version...');
 
+    // En el método _createDatabase, actualizar la tabla registros_despliegue:
     await db.execute('''
       CREATE TABLE registros_despliegue (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,10 +50,16 @@ class DatabaseService {
         operadorId INTEGER NOT NULL,
         sincronizado INTEGER NOT NULL DEFAULT 0,
         centroEmpadronamiento INTEGER,
-        fechaSincronizacion TEXT
+        fechaSincronizacion TEXT,
+        idServidor INTEGER,
+        fechaCreacionLocal TEXT,
+        intentos INTEGER DEFAULT 0,
+        ultimoIntento TEXT,
+        operador_id INTEGER,
+        centro_empadronamiento_id INTEGER
       )
     ''');
-    print('✅ Tabla registros_despliegue creada');
+    print('✅ Tabla registros_despliegue creada con campos extendidos');
 
     await db.execute('''
       CREATE TABLE reportes_diarios (
@@ -106,51 +113,50 @@ class DatabaseService {
     print('✅ Todas las tablas creadas exitosamente');
   }
 
-  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+  Future<void> _upgradeDatabase(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
     print('🔄 Migrando BD de versión $oldVersion a $newVersion...');
 
-    // ✅ VERSIÓN 7: AGREGAR COLUMNAS FALTANTES A REPORTES_DIARIOS
-    if (oldVersion < 7) {
-      print('🔧 Aplicando migración versión 7: Columnas faltantes...');
+// En _upgradeDatabase, agregar:
+    if (oldVersion < 8) {
+      print('🔧 Aplicando migración versión 8: Extender tabla registros_despliegue...');
 
       try {
-        // Verificar estructura actual de reportes_diarios
-        final columns = await db.rawQuery('PRAGMA table_info(reportes_diarios)');
+        // Verificar columnas existentes
+        final columns = await db.rawQuery('PRAGMA table_info(registros_despliegue)');
         final columnNames = columns.map((col) => col['name'] as String).toList();
 
-        print('📋 Columnas actuales en reportes_diarios: $columnNames');
+        print('📋 Columnas actuales en registros_despliegue: $columnNames');
 
-        // ✅ AGREGAR COLUMNAS FALTANTES
-        final columnasFaltantes = {
-          'observacionC': 'ALTER TABLE reportes_diarios ADD COLUMN observacionC TEXT',
-          'observacionR': 'ALTER TABLE reportes_diarios ADD COLUMN observacionR TEXT',
-          'saltosenC': 'ALTER TABLE reportes_diarios ADD COLUMN saltosenC INTEGER DEFAULT 0',
-          'saltosenR': 'ALTER TABLE reportes_diarios ADD COLUMN saltosenR INTEGER DEFAULT 0',
-          'centro_empadronamiento': 'ALTER TABLE reportes_diarios ADD COLUMN centro_empadronamiento INTEGER',
+        // Agregar columnas faltantes
+        final nuevasColumnas = {
+          'idServidor': 'ALTER TABLE registros_despliegue ADD COLUMN idServidor INTEGER',
+          'fechaCreacionLocal': 'ALTER TABLE registros_despliegue ADD COLUMN fechaCreacionLocal TEXT',
+          'intentos': 'ALTER TABLE registros_despliegue ADD COLUMN intentos INTEGER DEFAULT 0',
+          'ultimoIntento': 'ALTER TABLE registros_despliegue ADD COLUMN ultimoIntento TEXT',
+          'operador_id': 'ALTER TABLE registros_despliegue ADD COLUMN operador_id INTEGER',
+          'centro_empadronamiento_id': 'ALTER TABLE registros_despliegue ADD COLUMN centro_empadronamiento_id INTEGER',
         };
 
-        for (final entry in columnasFaltantes.entries) {
+        for (final entry in nuevasColumnas.entries) {
           if (!columnNames.contains(entry.key)) {
             try {
               await db.execute(entry.value);
-              print('✅ Columna ${entry.key} agregada a reportes_diarios');
+              print('✅ Columna ${entry.key} agregada a registros_despliegue');
             } catch (e) {
-              print('⚠️  Error agregando columna ${entry.key}: $e');
+              print('⚠️ Error agregando columna ${entry.key}: $e');
             }
           } else {
             print('✅ Columna ${entry.key} ya existe');
           }
         }
 
-        // ✅ VERIFICAR ESTRUCTURA FINAL
-        final columnasFinales = await db.rawQuery('PRAGMA table_info(reportes_diarios)');
-        final nombresFinales = columnasFinales.map((col) => col['name'] as String).toList();
-        print('🎯 Estructura final de reportes_diarios: $nombresFinales');
-
+        print('🎯 Estructura final de registros_despliegue actualizada');
       } catch (e) {
-        print('❌ Error en migración versión 7: $e');
-        // Si hay error crítico, recrear la tabla
-        await _recrearTablaReportesDiarios(db);
+        print('❌ Error en migración versión 8: $e');
       }
     }
 
@@ -375,7 +381,9 @@ class DatabaseService {
       await db.execute('DROP TABLE reportes_diarios');
 
       // 4. Renombrar tabla temporal
-      await db.execute('ALTER TABLE reportes_diarios_temp RENAME TO reportes_diarios');
+      await db.execute(
+        'ALTER TABLE reportes_diarios_temp RENAME TO reportes_diarios',
+      );
 
       print('✅ Tabla reportes_diarios recreada exitosamente');
     } catch (e) {
@@ -410,13 +418,21 @@ class DatabaseService {
       print('🔍 Verificando estructura de la base de datos...');
 
       // Verificar reportes_diarios
-      final columnasReportes = await db.rawQuery('PRAGMA table_info(reportes_diarios)');
-      final nombresReportes = columnasReportes.map((col) => col['name'] as String).toList();
+      final columnasReportes = await db.rawQuery(
+        'PRAGMA table_info(reportes_diarios)',
+      );
+      final nombresReportes = columnasReportes
+          .map((col) => col['name'] as String)
+          .toList();
       print('📋 Estructura de reportes_diarios: $nombresReportes');
 
       // Verificar columnas requeridas
       final columnasRequeridas = [
-        'observacionC', 'observacionR', 'saltosenC', 'saltosenR', 'centro_empadronamiento'
+        'observacionC',
+        'observacionR',
+        'saltosenC',
+        'saltosenR',
+        'centro_empadronamiento',
       ];
 
       for (final columna in columnasRequeridas) {
@@ -426,7 +442,6 @@ class DatabaseService {
           print('✅ Columna presente: $columna');
         }
       }
-
     } catch (e) {
       print('❌ Error verificando estructura: $e');
     }
@@ -480,7 +495,10 @@ class DatabaseService {
       final db = await database;
       await db.update(
         'registros_despliegue',
-        {'sincronizado': 1, 'fechaSincronizacion': DateTime.now().toIso8601String()},
+        {
+          'sincronizado': 1,
+          'fechaSincronizacion': DateTime.now().toIso8601String(),
+        },
         where: 'id = ?',
         whereArgs: [id],
       );
@@ -498,7 +516,9 @@ class DatabaseService {
         where: 'id = ?',
         whereArgs: [id],
       );
-      return result.isNotEmpty ? RegistroDespliegue.fromMap(result.first) : null;
+      return result.isNotEmpty
+          ? RegistroDespliegue.fromMap(result.first)
+          : null;
     } catch (e) {
       print('❌ Error al obtener registro por ID: $e');
       return null;
@@ -525,7 +545,8 @@ class DatabaseService {
     }
   }
 
-  Future<List<RegistroDespliegue>> obtenerRegistrosDespliegueNoSincronizados() async {
+  Future<List<RegistroDespliegue>>
+  obtenerRegistrosDespliegueNoSincronizados() async {
     return obtenerNoSincronizados();
   }
 
@@ -590,7 +611,10 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getReportes() async {
     try {
       final db = await database;
-      final result = await db.query('reportes_diarios', orderBy: 'fecha_reporte DESC');
+      final result = await db.query(
+        'reportes_diarios',
+        orderBy: 'fecha_reporte DESC',
+      );
       print('📊 Total de reportes: ${result.length}');
       return result;
     } catch (e) {
@@ -648,16 +672,22 @@ class DatabaseService {
       final count = await db.delete(
         'reportes_diarios',
         where: 'operador = ? AND synced = ?',
-        whereArgs: [operadorId, 1], // Elimina solo los sincronizados (1) de este operador
+        whereArgs: [
+          operadorId,
+          1,
+        ], // Elimina solo los sincronizados (1) de este operador
       );
-      print('🧹 Se eliminaron $count reportes locales ya sincronizados para el operador $operadorId.');
+      print(
+        '🧹 Se eliminaron $count reportes locales ya sincronizados para el operador $operadorId.',
+      );
       return count;
     } catch (e) {
-      print('❌ Error al limpiar los reportes sincronizados del operador $operadorId: $e');
+      print(
+        '❌ Error al limpiar los reportes sincronizados del operador $operadorId: $e',
+      );
       return 0;
     }
   }
-
 
   /// ==========================================================
   /// ✅ MÉTODO AÑADIDO: OBTENER REPORTES DIARIOS NO SINCRONIZADOS
@@ -708,7 +738,9 @@ class DatabaseService {
     }
   }
 
-  Future<void> guardarPuntosEmpadronamiento(List<Map<String, dynamic>> puntos) async {
+  Future<void> guardarPuntosEmpadronamiento(
+    List<Map<String, dynamic>> puntos,
+  ) async {
     try {
       final db = await database;
       await db.transaction((txn) async {
@@ -756,11 +788,11 @@ class DatabaseService {
     }
   }
 
-
   Future<int> actualizarRegistroDespliegue(RegistroDespliegue registro) async {
     try {
       final db = await database;
-      if (registro.id == null) throw Exception('El registro debe tener un ID para actualizarse');
+      if (registro.id == null)
+        throw Exception('El registro debe tener un ID para actualizarse');
 
       final result = await db.update(
         'registros_despliegue',
@@ -808,9 +840,9 @@ class DatabaseService {
   }
 
   // Pega este bloque de código dentro de tu clase DatabaseService
-// en el archivo lib/services/database_service.dart
+  // en el archivo lib/services/database_service.dart
 
-// ========== MÉTODOS ADICIONALES PARA UBICACIONES ==========
+  // ========== MÉTODOS ADICIONALES PARA UBICACIONES ==========
 
   /// Obtiene una lista de todas las ubicaciones que aún no han sido sincronizadas.
   Future<List<UbicacionModel>> obtenerUbicacionesPendientes() async {
@@ -820,7 +852,8 @@ class DatabaseService {
         'ubicaciones',
         where: 'sincronizado = ?',
         whereArgs: [0], // 0 representa 'false'
-        orderBy: 'timestamp ASC', // Ordena para sincronizar las más antiguas primero
+        orderBy:
+            'timestamp ASC', // Ordena para sincronizar las más antiguas primero
       );
       // Mapea el resultado a una lista de modelos UbicacionModel
       return result.map((json) => UbicacionModel.fromJson(json)).toList();
@@ -857,14 +890,19 @@ class DatabaseService {
       final total = Sqflite.firstIntValue(totalResult) ?? 0;
 
       // Contar los registros pendientes de sincronizar
-      final pendientesResult = await db.rawQuery('SELECT COUNT(*) FROM ubicaciones WHERE sincronizado = 0');
+      final pendientesResult = await db.rawQuery(
+        'SELECT COUNT(*) FROM ubicaciones WHERE sincronizado = 0',
+      );
       final pendientes = Sqflite.firstIntValue(pendientesResult) ?? 0;
 
       // Obtener la fecha del registro pendiente más antiguo
       String masAntigua = 'N/A';
       if (pendientes > 0) {
-        final masAntiguaResult = await db.rawQuery('SELECT MIN(timestamp) as ts FROM ubicaciones WHERE sincronizado = 0');
-        if (masAntiguaResult.isNotEmpty && masAntiguaResult.first['ts'] != null) {
+        final masAntiguaResult = await db.rawQuery(
+          'SELECT MIN(timestamp) as ts FROM ubicaciones WHERE sincronizado = 0',
+        );
+        if (masAntiguaResult.isNotEmpty &&
+            masAntiguaResult.first['ts'] != null) {
           masAntigua = masAntiguaResult.first['ts'] as String;
         }
       }
@@ -877,12 +915,171 @@ class DatabaseService {
     } catch (e) {
       print('❌ Error al obtener estadísticas de ubicaciones: $e');
       // Devuelve un mapa con valores por defecto en caso de error
+      return {'total': 0, 'pendientes': 0, 'mas_antigua': 'Error'};
+    }
+  }
+
+  // ========== MÉTODOS PARA REGISTROS DE DESPLIEGUE (OFFLINE) ==========
+
+  /// ✅ Insertar registro de despliegue offline
+  Future<int> insertRegistroDespliegueOffline(Map<String, dynamic> datos) async {
+    try {
+      final db = await database;
+
+      // Mapear datos snake_case a camelCase para la tabla existente
+      final datosParaInsertar = {
+        'latitud': datos['latitud']?.toString() ?? '0',
+        'longitud': datos['longitud']?.toString() ?? '0',
+        'descripcionReporte': datos['descripcion_reporte'],
+        'estado': datos['estado'] ?? 'DESPLIEGUE',
+        'sincronizar': (datos['sincronizar'] ?? true) ? 1 : 0,
+        'observaciones': datos['observaciones'] ?? '',
+        'incidencias': datos['incidencias'] ?? 'Ubicación capturada',
+        'fechaHora': datos['fecha_hora'] ?? DateTime.now().toIso8601String(),
+        'operadorId': datos['operador_id'] ?? datos['operador'],
+        'sincronizado': 0,
+        'centroEmpadronamiento': datos['centro_empadronamiento_id'] ?? datos['centro_empadronamiento'],
+        'fechaSincronizacion': null,
+        'idServidor': null,
+        'fechaCreacionLocal': DateTime.now().toIso8601String(),
+        'intentos': 0,
+        'ultimoIntento': null,
+        // Campos de compatibilidad
+        'operador_id': datos['operador_id'] ?? datos['operador'],
+        'centro_empadronamiento_id': datos['centro_empadronamiento_id'] ?? datos['centro_empadronamiento'],
+      };
+
+      // Eliminar valores nulos
+      datosParaInsertar.removeWhere((key, value) => value == null);
+
+      final id = await db.insert(
+        'registros_despliegue',
+        datosParaInsertar,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      print('✅ Registro guardado en registros_despliegue (offline) con ID: $id');
+      return id;
+    } catch (e) {
+      print('❌ Error insertando registro offline: $e');
+      return -1;
+    }
+  }
+
+  /// ✅ Obtener registros pendientes de sincronización
+  Future<List<Map<String, dynamic>>> obtenerRegistrosDesplieguePendientes() async {
+    try {
+      final db = await database;
+      return await db.query(
+        'registros_despliegue',
+        where: 'sincronizado = ?',
+        whereArgs: [0],
+        orderBy: 'fechaCreacionLocal ASC',
+      );
+    } catch (e) {
+      print('❌ Error obteniendo registros pendientes: $e');
+      return [];
+    }
+  }
+
+  /// ✅ Actualizar registro como sincronizado
+  Future<void> marcarRegistroDespliegueSincronizado(int idLocal, int idServidor) async {
+    try {
+      final db = await database;
+      await db.update(
+        'registros_despliegue',
+        {
+          'sincronizado': 1,
+          'idServidor': idServidor,
+          'fechaSincronizacion': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [idLocal],
+      );
+      print('✅ Registro $idLocal marcado como sincronizado');
+    } catch (e) {
+      print('❌ Error marcando registro como sincronizado: $e');
+    }
+  }
+
+  /// ✅ Incrementar intentos de un registro
+  Future<void> incrementarIntentosRegistro(int idLocal) async {
+    try {
+      final db = await database;
+      await db.rawUpdate(
+        '''
+      UPDATE registros_despliegue 
+      SET intentos = intentos + 1, 
+          ultimoIntento = ?
+      WHERE id = ?
+      ''',
+        [DateTime.now().toIso8601String(), idLocal],
+      );
+      print('⚠️ Intentos incrementados para registro $idLocal');
+    } catch (e) {
+      print('❌ Error incrementando intentos: $e');
+    }
+  }
+
+  /// ✅ Obtener estadísticas de sincronización
+  Future<Map<String, dynamic>> obtenerEstadisticasDespliegueOffline() async {
+    try {
+      final db = await database;
+
+      // Total registros offline (no sincronizados)
+      final totalResult = await db.rawQuery(
+          'SELECT COUNT(*) as count FROM registros_despliegue WHERE sincronizado = 0'
+      );
+      final totalPendientes = (totalResult.first['count'] as int?) ?? 0;
+
+      // Total de todos los registros
+      final totalTodosResult = await db.rawQuery(
+          'SELECT COUNT(*) as count FROM registros_despliegue'
+      );
+      final totalTodos = (totalTodosResult.first['count'] as int?) ?? 0;
+
+      // Registros sincronizados
+      final sincronizadosResult = await db.rawQuery(
+          'SELECT COUNT(*) as count FROM registros_despliegue WHERE sincronizado = 1'
+      );
+      final sincronizados = (sincronizadosResult.first['count'] as int?) ?? 0;
+
+      // Registros con más de 3 intentos fallidos
+      final fallidosResult = await db.rawQuery(
+          'SELECT COUNT(*) as count FROM registros_despliegue WHERE sincronizado = 0 AND intentos >= 3'
+      );
+      final fallidos = (fallidosResult.first['count'] as int?) ?? 0;
+
+      return {
+        'total': totalTodos,
+        'sincronizados': sincronizados,
+        'pendientes': totalPendientes,
+        'fallidos': fallidos,
+        'porcentaje': totalTodos > 0 ? ((sincronizados / totalTodos) * 100).round() : 0,
+      };
+    } catch (e) {
+      print('❌ Error obteniendo estadísticas: $e');
       return {
         'total': 0,
+        'sincronizados': 0,
         'pendientes': 0,
-        'mas_antigua': 'Error',
+        'fallidos': 0,
+        'porcentaje': 0,
       };
     }
   }
 
+  /// ✅ Obtener todos los registros de un operador (para debug)
+  Future<List<Map<String, dynamic>>> obtenerRegistrosCompletos() async {
+    try {
+      final db = await database;
+      return await db.query(
+        'registros_despliegue',
+        orderBy: 'fechaHora DESC',
+      );
+    } catch (e) {
+      print('❌ Error obteniendo registros completos: $e');
+      return [];
+    }
+  }
 }
