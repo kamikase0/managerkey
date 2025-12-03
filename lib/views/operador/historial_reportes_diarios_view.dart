@@ -1,7 +1,8 @@
-// lib/views/operador/historial_reportes_diarios_view.dart - Versión completa corregida
+// lib/views/operador/historial_reportes_diarios_view.dart - VERSIÓN CON ORDEN DESCENDENTE
 import 'package:flutter/material.dart';
 import '../../models/reporte_diario_historial.dart';
 import '../../services/reporte_historial_service.dart';
+import '../../services/auth_service.dart';
 
 class HistorialReportesDiariosView extends StatefulWidget {
   const HistorialReportesDiariosView({Key? key}) : super(key: key);
@@ -13,16 +14,48 @@ class HistorialReportesDiariosView extends StatefulWidget {
 class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosView> {
   late Future<List<ReporteDiarioHistorial>> _historialFuture;
   final ReporteHistorialService _historialService = ReporteHistorialService();
+  final AuthService _authService = AuthService();
+
+  String? _nroEstacion;
 
   @override
   void initState() {
     super.initState();
+    _cargarDatosOperador();
     _cargarHistorial();
+  }
+
+  Future<void> _cargarDatosOperador() async {
+    try {
+      final datosOperador = await _authService.getDatosOperador();
+      if (datosOperador != null) {
+        _nroEstacion = datosOperador['nro_estacion']?.toString() ?? 'N/A';
+      }
+    } catch (e) {
+      print('Error cargando datos del operador: $e');
+    }
   }
 
   void _cargarHistorial() {
     setState(() {
       _historialFuture = _historialService.getHistorialReportes();
+    });
+  }
+
+  // Método para ordenar los reportes de forma descendente por fecha
+  List<ReporteDiarioHistorial> _ordenarReportesDescendente(List<ReporteDiarioHistorial> reportes) {
+    return reportes..sort((a, b) {
+      try {
+        // Parsear las fechas
+        final fechaA = DateTime.parse(a.fechaReporte);
+        final fechaB = DateTime.parse(b.fechaReporte);
+
+        // Ordenar descendente (más reciente primero)
+        return fechaB.compareTo(fechaA);
+      } catch (e) {
+        // Si hay error al parsear, mantener el orden original
+        return 0;
+      }
     });
   }
 
@@ -44,23 +77,21 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
       body: FutureBuilder<List<ReporteDiarioHistorial>>(
         future: _historialFuture,
         builder: (context, snapshot) {
-          // --- Estado de Carga ---
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // --- Estado de Error ---
           if (snapshot.hasError) {
             return _buildErrorWidget(snapshot.error.toString());
           }
 
-          // --- Estado Sin Datos ---
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return _buildEmptyWidget();
           }
 
-          // --- Estado con Datos (Éxito) ---
-          final reportes = snapshot.data!;
+          // Ordenar los reportes de forma descendente
+          final reportesOrdenados = _ordenarReportesDescendente(snapshot.data!);
+
           return RefreshIndicator(
             onRefresh: () async {
               _cargarHistorial();
@@ -68,10 +99,10 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
             },
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
-              itemCount: reportes.length,
+              itemCount: reportesOrdenados.length,
               itemBuilder: (context, index) {
-                final reporte = reportes[index];
-                return _buildReporteCard(reporte);
+                final reporte = reportesOrdenados[index];
+                return _buildReporteCard(reporte, index);
               },
             ),
           );
@@ -81,7 +112,10 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
   }
 
   // Widget para mostrar un reporte individual
-  Widget _buildReporteCard(ReporteDiarioHistorial reporte) {
+  Widget _buildReporteCard(ReporteDiarioHistorial reporte, int index) {
+    // Usamos el número de estación del operador
+    final codigoMateria = "BIOM-030"; // Fijo como en la imagen
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       elevation: 3,
@@ -97,16 +131,17 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Fila superior: Fecha y Estado
+            // Fila superior: Número de Reporte y Estado
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
-                    _formatearFecha(reporte.fechaReporte),
+                    "Reporte ${reporte.id ?? index + 1}",
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 18,
+                      color: Color(0xFF333333),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -132,65 +167,162 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
               ],
             ),
 
-            // Nombre de estación si está disponible
-            if (reporte.nombreEstacion != null && reporte.nombreEstacion!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Estación: ${reporte.nombreEstacion}',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
+            // Código de materia
+            const SizedBox(height: 4),
+            Text(
+              codigoMateria,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.blue.shade800,
+                fontSize: 14,
+                letterSpacing: 0.5,
               ),
-            ],
-
-            const Divider(height: 20),
-
-            // Estadísticas de registros
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatColumn(
-                  'Registros R',
-                  reporte.registrosR.toString(),
-                  Colors.blue,
-                ),
-                _buildStatColumn(
-                  'Registros C',
-                  reporte.registrosC.toString(),
-                  Colors.orange,
-                ),
-              ],
             ),
 
-            // Observaciones si las hay
-            if (reporte.observaciones != null && reporte.observaciones!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'Observaciones: ${reporte.observaciones}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey.shade700,
-                  ),
+            // Nombre de estación si está disponible
+            if (_nroEstacion != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                'Estación: $_nroEstacion',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
                 ),
               ),
             ],
+
+            const Divider(height: 20, thickness: 1),
+
+            // Transacción
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                "Trans. ${_nroEstacion ?? 'N/A'}",
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF444444),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+
+            // Fecha específica como en la imagen
+            Text(
+              _formatearFechaEspecifica(reporte.fechaReporte),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade700,
+                fontFamily: 'Monospace',
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // SECCIÓN REGISTROS R - CON FORMATO ESPECÍFICO
+            _buildSeccionRegistrosFormateada(
+              tipo: 'R',
+              inicial: reporte.contadorInicialR,
+              final_: reporte.contadorFinalR,
+              saltos: reporte.saltosenR.toString(),
+              total: reporte.contadorR,
+              color: Colors.blue,
+            ),
+
+            const SizedBox(height: 16),
+
+            // SECCIÓN REGISTROS C - CON FORMATO ESPECÍFICO
+            _buildSeccionRegistrosFormateada(
+              tipo: 'C',
+              inicial: reporte.contadorInicialC,
+              final_: reporte.contadorFinalC,
+              saltos: reporte.saltosenC.toString(),
+              total: reporte.contadorC,
+              color: Colors.orange,
+            ),
+
+            // Observaciones e incidencias
+            if ((reporte.observaciones?.isNotEmpty ?? false) ||
+                (reporte.incidencias?.isNotEmpty ?? false)) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (reporte.observaciones?.isNotEmpty ?? false) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.note,
+                            color: Colors.grey.shade700,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Observaciones: ${reporte.observaciones}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (reporte.incidencias?.isNotEmpty ?? false)
+                        const SizedBox(height: 8),
+                    ],
+                    if (reporte.incidencias?.isNotEmpty ?? false) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning,
+                            color: Colors.orange.shade700,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Incidencias: ${reporte.incidencias}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
+            // Fecha de registro
+            const SizedBox(height: 12),
+            Text(
+              'Registro: ${_formatearFechaHoraString(reporte.fechaCreacion?.toIso8601String() ?? '')}',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+              ),
+            ),
 
             // Fecha de sincronización si está disponible
             if (reporte.fechaSincronizacion != null &&
                 reporte.estadoSincronizacion == EstadoSincronizacion.sincronizado) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Text(
                 'Sincronizado: ${_formatearFechaHora(reporte.fechaSincronizacion!)}',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 11,
                   color: Colors.grey.shade600,
                 ),
               ),
@@ -201,31 +333,197 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
     );
   }
 
-  // --- Widgets Auxiliares ---
+  // Widget para sección de registros con formato específico (como en la imagen)
+  Widget _buildSeccionRegistrosFormateada({
+    required String tipo,
+    required String inicial,
+    required String final_,
+    required String saltos,
+    required String total,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Título de la sección (Ri o Ci)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Text(
+              '$tipo i :',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: color,
+                fontSize: 14,
+              ),
+            ),
+          ),
 
-  Widget _buildStatColumn(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
+          // Línea de valores iniciales y finales
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    'Inicial :',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: color,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    inicial,
+                    style: TextStyle(
+                      color: Colors.grey.shade800,
+                      fontSize: 12,
+                      fontFamily: 'Monospace',
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: color,
+
+          // Línea de valores finales
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    'Final:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: color,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    final_,
+                    style: TextStyle(
+                      color: Colors.grey.shade800,
+                      fontSize: 12,
+                      fontFamily: 'Monospace',
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+
+          const SizedBox(height: 8),
+
+          // Fila: Saltos y Total
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 70,
+                      child: Text(
+                        'Saltos:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: color,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      saltos,
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 12,
+                        fontFamily: 'Monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 70,
+                      child: Text(
+                        'Total:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: color,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      total,
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 12,
+                        fontFamily: 'Monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
+  // Formatea fecha específica como "24-10-2025 14:21'12"
+  String _formatearFechaEspecifica(String fechaStr) {
+    if (fechaStr.isEmpty) return "Fecha no disponible";
+
+    try {
+      final fecha = DateTime.parse(fechaStr).toLocal();
+      final day = fecha.day.toString().padLeft(2, '0');
+      final month = fecha.month.toString().padLeft(2, '0');
+      final year = fecha.year.toString();
+      final hour = fecha.hour.toString().padLeft(2, '0');
+      final minute = fecha.minute.toString().padLeft(2, '0');
+      final second = fecha.second.toString().padLeft(2, '0');
+
+      return 'Fecha: $day-$month-$year $hour:$minute\'$second';
+    } catch (_) {
+      return 'Fecha: ${fechaStr.split('T').first}';
+    }
+  }
+
+  // Formatea fecha y hora desde string
+  String _formatearFechaHoraString(String fechaStr) {
+    if (fechaStr.isEmpty) return "Fecha no disponible";
+    try {
+      final fecha = DateTime.parse(fechaStr).toLocal();
+      return "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}";
+    } catch (_) {
+      return fechaStr.split('T').first;
+    }
+  }
+
+  String _formatearFechaHora(DateTime fecha) {
+    return "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}";
+  }
+
+  // Resto de métodos auxiliares
   Widget _buildErrorWidget(String error) {
     return Center(
       child: Padding(
@@ -266,28 +564,20 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.inbox_outlined,
+            Icons.history_toggle_off,
             color: Colors.grey.shade400,
-            size: 60,
+            size: 70,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text(
-            'No se encontraron reportes',
+            'No hay historial de reportes',
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey.shade700,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Los reportes aparecerán aquí una vez que los sincronices',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: _cargarHistorial,
             icon: const Icon(Icons.refresh, size: 18),
@@ -300,35 +590,5 @@ class _HistorialReportesDiariosViewState extends State<HistorialReportesDiariosV
         ],
       ),
     );
-  }
-
-  // --- Helpers para formatear fechas ---
-
-  String _formatearFecha(String fechaStr) {
-    if (fechaStr.isEmpty) return "Fecha no disponible";
-    try {
-      final fecha = DateTime.parse(fechaStr).toLocal();
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final ayer = today.subtract(const Duration(days: 1));
-
-      if (fecha.year == today.year &&
-          fecha.month == today.month &&
-          fecha.day == today.day) {
-        return "Hoy";
-      } else if (fecha.year == ayer.year &&
-          fecha.month == ayer.month &&
-          fecha.day == ayer.day) {
-        return "Ayer";
-      } else {
-        return "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}";
-      }
-    } catch (_) {
-      return fechaStr.split('T').first;
-    }
-  }
-
-  String _formatearFechaHora(DateTime fecha) {
-    return "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}";
   }
 }

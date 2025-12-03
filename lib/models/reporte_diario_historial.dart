@@ -1,45 +1,117 @@
-// lib/models/reporte_diario_historial.dart
+// lib/models/reporte_diario_historial.dart - VERSIÓN ACTUALIZADA
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class ReporteDiarioHistorial {
   final int? id;
   final String fechaReporte;
-  final int registrosC;
-  final int registrosR;
+  final String contadorInicialC;
+  final String contadorFinalC;
+  final String contadorC;
+  final String contadorInicialR;
+  final String contadorFinalR;
+  final String contadorR;
+  final String? incidencias;
   final String? observaciones;
-  final String? nombreEstacion;
+  final int operador;
+  final int estacion;
   final EstadoSincronizacion estadoSincronizacion;
+  final bool sincronizar;
+  final int synced;
   final DateTime? fechaCreacion;
   final DateTime? fechaSincronizacion;
+  final String? observacionC;
+  final String? observacionR;
+  final int saltosenC;
+  final int saltosenR;
+  final int? centroEmpadronamiento;
 
   ReporteDiarioHistorial({
     this.id,
     required this.fechaReporte,
-    required this.registrosC,
-    required this.registrosR,
+    required this.contadorInicialC,
+    required this.contadorFinalC,
+    required this.contadorC,
+    required this.contadorInicialR,
+    required this.contadorFinalR,
+    required this.contadorR,
+    this.incidencias,
     this.observaciones,
-    this.nombreEstacion,
+    required this.operador,
+    required this.estacion,
     required this.estadoSincronizacion,
+    this.sincronizar = true,
+    this.synced = 0,
     this.fechaCreacion,
     this.fechaSincronizacion,
+    this.observacionC,
+    this.observacionR,
+    this.saltosenC = 0,
+    this.saltosenR = 0,
+    this.centroEmpadronamiento,
   });
 
+  // Constructor desde JSON de API
   factory ReporteDiarioHistorial.fromJson(Map<String, dynamic> json) {
     return ReporteDiarioHistorial(
       id: json['id'] as int?,
-      fechaReporte: json['fecha_reporte'] ?? json['fechaReporte'] ?? '',
-      registrosC: (json['registros_c'] ?? json['registrosC'] ?? 0) as int,
-      registrosR: (json['registros_r'] ?? json['registrosR'] ?? 0) as int,
+      fechaReporte: json['fecha_reporte'] ?? '',
+      contadorInicialC: json['contador_inicial_c']?.toString() ?? '',
+      contadorFinalC: json['contador_final_c']?.toString() ?? '',
+      contadorC: (json['registro_c'] ?? 0).toString(),
+      contadorInicialR: json['contador_inicial_r']?.toString() ?? '',
+      contadorFinalR: json['contador_final_r']?.toString() ?? '',
+      contadorR: (json['registro_r'] ?? 0).toString(),
+      incidencias: json['incidencias'] as String?,
       observaciones: json['observaciones'] as String?,
-      nombreEstacion: json['nombre_estacion'] ?? json['nombreEstacion'] as String?,
-      estadoSincronizacion: _parseEstadoSincronizacion(json['estado'] ?? json['estado_sincronizacion']),
-      fechaCreacion: json['fecha_creacion'] != null
-          ? DateTime.parse(json['fecha_creacion'] as String)
+      operador: json['operador'] ?? 0,
+      estacion: json['estacion'] ?? 0,
+      estadoSincronizacion: _parseEstadoSincronizacion(json['estado']),
+      sincronizar: json['sincronizar'] ?? true,
+      synced: json['synced'] ?? 1, // Los de API vienen sincronizados
+      fechaCreacion: json['fecha_registro'] != null
+          ? DateTime.parse(json['fecha_registro'] as String)
           : null,
       fechaSincronizacion: json['fecha_sincronizacion'] != null
           ? DateTime.parse(json['fecha_sincronizacion'] as String)
           : null,
+      observacionC: json['observacionC'] as String?,
+      observacionR: json['observacionR'] as String?,
+      saltosenC: json['saltosenC'] ?? 0,
+      saltosenR: json['saltosenR'] ?? 0,
+      centroEmpadronamiento: json['centro_empadronamiento'] as int?,
+    );
+  }
+
+  // Constructor desde base de datos local
+  factory ReporteDiarioHistorial.fromDb(Map<String, dynamic> map) {
+    return ReporteDiarioHistorial(
+      id: map['id'] as int?,
+      fechaReporte: map['fecha_reporte'] ?? '',
+      contadorInicialC: map['contador_inicial_c']?.toString() ?? '',
+      contadorFinalC: map['contador_final_c']?.toString() ?? '',
+      contadorC: map['contador_c']?.toString() ?? '',
+      contadorInicialR: map['contador_inicial_r']?.toString() ?? '',
+      contadorFinalR: map['contador_final_r']?.toString() ?? '',
+      contadorR: map['contador_r']?.toString() ?? '',
+      incidencias: map['incidencias'] as String?,
+      observaciones: map['observaciones'] as String?,
+      operador: map['operador'] ?? 0,
+      estacion: map['estacion'] ?? 0,
+      estadoSincronizacion: _parseEstadoSincronizacion(map['estado']),
+      sincronizar: (map['sincronizar'] ?? 1) == 1,
+      synced: map['synced'] ?? 0,
+      fechaCreacion: map['fecha_creacion'] != null
+          ? DateTime.parse(map['fecha_creacion'] as String)
+          : null,
+      fechaSincronizacion: map['fecha_sincronizacion'] != null
+          ? DateTime.parse(map['fecha_sincronizacion'] as String)
+          : null,
+      observacionC: map['observacionC'] as String?,
+      observacionR: map['observacionR'] as String?,
+      saltosenC: map['saltosenC'] ?? 0,
+      saltosenR: map['saltosenR'] ?? 0,
+      centroEmpadronamiento: map['centro_empadronamiento'] as int?,
     );
   }
 
@@ -47,7 +119,10 @@ class ReporteDiarioHistorial {
     if (estado == null) return EstadoSincronizacion.pendiente;
 
     final estadoStr = estado.toString().toLowerCase();
-    if (estadoStr.contains('sincronizado') || estadoStr == '1' || estadoStr == 'true') {
+    if (estadoStr.contains('sincronizado') ||
+        estadoStr == '1' ||
+        estadoStr == 'true' ||
+        estadoStr.contains('envio reporte')) {
       return EstadoSincronizacion.sincronizado;
     } else if (estadoStr.contains('fallido') || estadoStr.contains('error')) {
       return EstadoSincronizacion.fallido;
@@ -56,19 +131,64 @@ class ReporteDiarioHistorial {
     }
   }
 
-  Map<String, dynamic> toJson() {
+  // Convertir a Map para la base de datos
+  Map<String, dynamic> toDbMap() {
     return {
       if (id != null) 'id': id,
       'fecha_reporte': fechaReporte,
-      'registros_c': registrosC,
-      'registros_r': registrosR,
+      'contador_inicial_c': contadorInicialC,
+      'contador_final_c': contadorFinalC,
+      'contador_c': contadorC,
+      'contador_inicial_r': contadorInicialR,
+      'contador_final_r': contadorFinalR,
+      'contador_r': contadorR,
+      'incidencias': incidencias,
       'observaciones': observaciones,
-      'nombre_estacion': nombreEstacion,
-      'estado_sincronizacion': estadoSincronizacion.toString().split('.').last,
+      'operador': operador,
+      'estacion': estacion,
+      'estado': estadoSincronizacion.displayName,
+      'sincronizar': sincronizar ? 1 : 0,
+      'synced': synced,
       'fecha_creacion': fechaCreacion?.toIso8601String(),
       'fecha_sincronizacion': fechaSincronizacion?.toIso8601String(),
+      'observacionC': observacionC,
+      'observacionR': observacionR,
+      'saltosenC': saltosenC,
+      'saltosenR': saltosenR,
+      'centro_empadronamiento': centroEmpadronamiento,
     };
   }
+
+  // Convertir a JSON para API
+  Map<String, dynamic> toApiJson() {
+    return {
+      'fecha_reporte': fechaReporte,
+      'contador_inicial_c': contadorInicialC,
+      'contador_final_c': contadorFinalC,
+      'contador_c': contadorC,
+      'contador_inicial_r': contadorInicialR,
+      'contador_final_r': contadorFinalR,
+      'contador_r': contadorR,
+      'incidencias': incidencias,
+      'observaciones': observaciones,
+      'operador': operador,
+      'estacion': estacion,
+      'estado': estadoSincronizacion.displayName,
+      'sincronizar': sincronizar,
+      'synced': synced,
+      'updated_at': fechaCreacion?.toIso8601String(),
+      'observacionC': observacionC,
+      'observacionR': observacionR,
+      'saltosenC': saltosenC,
+      'saltosenR': saltosenR,
+      'centro_empadronamiento': centroEmpadronamiento,
+    };
+  }
+
+  // Getters para compatibilidad
+  int get registrosC => int.tryParse(contadorC) ?? 0;
+  int get registrosR => int.tryParse(contadorR) ?? 0;
+  String? get nombreEstacion => null; // Este campo no viene en el JSON
 }
 
 enum EstadoSincronizacion {
@@ -112,160 +232,3 @@ extension EstadoSincronizacionExtension on EstadoSincronizacion {
     }
   }
 }
-
-// // models/reporte_diario_historial.dart
-//
-// class ReporteDiarioHistorial {
-//   final int? id;
-//   final String fechaReporte;
-//   final String contadorInicialC;
-//   final String contadorFinalC;
-//   final String contadorC;
-//   final String contadorInicialR;
-//   final String contadorFinalR;
-//   final String contadorR;
-//   final String? incidencias;
-//   final String? observaciones;
-//   final int operador;
-//   final int estacion;
-//   final String estado;
-//   final bool sincronizar;
-//   final int synced;
-//   final String? updatedAt;
-//   final String? observacionC;
-//   final String? observacionR;
-//   final int saltosenC;
-//   final int saltosenR;
-//   final int? centroEmpadronamiento;
-//
-//   ReporteDiarioHistorial({
-//     this.id,
-//     required this.fechaReporte,
-//     required this.contadorInicialC,
-//     required this.contadorFinalC,
-//     required this.contadorC,
-//     required this.contadorInicialR,
-//     required this.contadorFinalR,
-//     required this.contadorR,
-//     this.incidencias,
-//     this.observaciones,
-//     required this.operador,
-//     required this.estacion,
-//     this.estado = 'TRANSMITIDO',
-//     this.sincronizar = true,
-//     this.synced = 0,
-//     this.updatedAt,
-//     this.observacionC,
-//     this.observacionR,
-//     this.saltosenC = 0,
-//     this.saltosenR = 0,
-//     this.centroEmpadronamiento,
-//   });
-//
-//   // Constructor desde JSON de API
-//   factory ReporteDiarioHistorial.fromJson(Map<String, dynamic> json) {
-//     return ReporteDiarioHistorial(
-//       id: json['id'],
-//       fechaReporte: json['fecha_reporte'] ?? '',
-//       contadorInicialC: json['contador_inicial_c']?.toString() ?? '',
-//       contadorFinalC: json['contador_final_c']?.toString() ?? '',
-//       contadorC: json['contador_c']?.toString() ?? '',
-//       contadorInicialR: json['contador_inicial_r']?.toString() ?? '',
-//       contadorFinalR: json['contador_final_r']?.toString() ?? '',
-//       contadorR: json['contador_r']?.toString() ?? '',
-//       incidencias: json['incidencias'],
-//       observaciones: json['observaciones'],
-//       operador: json['operador'] ?? 0,
-//       estacion: json['estacion'] ?? 0,
-//       estado: json['estado'] ?? 'TRANSMITIDO',
-//       sincronizar: json['sincronizar'] ?? true,
-//       synced: json['synced'] ?? 1, // Los de API vienen sincronizados
-//       updatedAt: json['updated_at'],
-//       observacionC: json['observacionC'],
-//       observacionR: json['observacionR'],
-//       saltosenC: json['saltosenC'] ?? 0,
-//       saltosenR: json['saltosenR'] ?? 0,
-//       centroEmpadronamiento: json['centro_empadronamiento'],
-//     );
-//   }
-//
-//   // Constructor desde base de datos local
-//   factory ReporteDiarioHistorial.fromDb(Map<String, dynamic> map) {
-//     return ReporteDiarioHistorial(
-//       id: map['id'],
-//       fechaReporte: map['fecha_reporte'] ?? '',
-//       contadorInicialC: map['contador_inicial_c']?.toString() ?? '',
-//       contadorFinalC: map['contador_final_c']?.toString() ?? '',
-//       contadorC: map['contador_c']?.toString() ?? '',
-//       contadorInicialR: map['contador_inicial_r']?.toString() ?? '',
-//       contadorFinalR: map['contador_final_r']?.toString() ?? '',
-//       contadorR: map['contador_r']?.toString() ?? '',
-//       incidencias: map['incidencias'],
-//       observaciones: map['observaciones'],
-//       operador: map['operador'] ?? 0,
-//       estacion: map['estacion'] ?? 0,
-//       estado: map['estado'] ?? 'TRANSMITIDO',
-//       sincronizar: (map['sincronizar'] ?? 1) == 1,
-//       synced: map['synced'] ?? 0,
-//       updatedAt: map['updated_at'],
-//       observacionC: map['observacionC'],
-//       observacionR: map['observacionR'],
-//       saltosenC: map['saltosenC'] ?? 0,
-//       saltosenR: map['saltosenR'] ?? 0,
-//       centroEmpadronamiento: map['centro_empadronamiento'],
-//     );
-//   }
-//
-//   // Convertir a Map para la base de datos
-//   Map<String, dynamic> toDbMap() {
-//     return {
-//       'fecha_reporte': fechaReporte,
-//       'contador_inicial_c': contadorInicialC,
-//       'contador_final_c': contadorFinalC,
-//       'contador_c': contadorC,
-//       'contador_inicial_r': contadorInicialR,
-//       'contador_final_r': contadorFinalR,
-//       'contador_r': contadorR,
-//       'incidencias': incidencias,
-//       'observaciones': observaciones,
-//       'operador': operador,
-//       'estacion': estacion,
-//       'estado': estado,
-//       'sincronizar': sincronizar ? 1 : 0,
-//       'synced': synced,
-//       'updated_at': updatedAt ?? DateTime.now().toIso8601String(),
-//       'observacionC': observacionC,
-//       'observacionR': observacionR,
-//       'saltosenC': saltosenC,
-//       'saltosenR': saltosenR,
-//       'centro_empadronamiento': centroEmpadronamiento,
-//     };
-//   }
-//
-//   // Convertir a JSON para API
-//   Map<String, dynamic> toApiJson() {
-//     return {
-//       'fecha_reporte': fechaReporte,
-//       'contador_inicial_c': contadorInicialC,
-//       'contador_final_c': contadorFinalC,
-//       'contador_c': contadorC,
-//       'contador_inicial_r': contadorInicialR,
-//       'contador_final_r': contadorFinalR,
-//       'contador_r': contadorR,
-//       'incidencias': incidencias,
-//       'observaciones': observaciones,
-//       'operador': operador,
-//       'estacion': estacion,
-//       'estado': estado,
-//       'sincronizar': sincronizar,
-//       'synced': synced,
-//       'updated_at': updatedAt,
-//       'observacionC': observacionC,
-//       'observacionR': observacionR,
-//       'saltosenC': saltosenC,
-//       'saltosenR': saltosenR,
-//       'centro_empadronamiento': centroEmpadronamiento,
-//     };
-//   }
-// }
-//

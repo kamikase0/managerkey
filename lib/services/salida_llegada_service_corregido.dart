@@ -68,6 +68,7 @@ class SalidaLlegadaService {
                 fechaHora: fechaHora,
                 idServidor: response['id_servidor'],
                 sincronizado: true,
+                puntoEmpadronamientoId: puntoEmpadronamientoId,
               );
 
               final idLocal = await _databaseService.insertRegistroConCorreccion(datosLocal!);
@@ -93,6 +94,7 @@ class SalidaLlegadaService {
         fechaHora: fechaHora,
         idServidor: null,
         sincronizado: false,
+        puntoEmpadronamientoId: puntoEmpadronamientoId,
       );
 
       final idLocal = await _databaseService.insertRegistroConCorreccion(datosLocal!);
@@ -245,11 +247,15 @@ class SalidaLlegadaService {
   /// ===================================================================
 
   /// Crear datos para base de datos local (snake_case)
+// En MÉTODOS AUXILIARES
+
+  /// Crear datos para base de datos local (snake_case)
   Map<String, dynamic> _crearDatosLocal({
     required Map<String, dynamic> datosServidor,
     required String fechaHora,
     required int? idServidor,
     required bool sincronizado,
+    required int puntoEmpadronamientoId, // <--- AÑADIR ESTE PARÁMETRO
   }) {
     final operadorId = datosServidor['operador'] ?? datosServidor['operadorId'];
     final fechaParaGuardar = datosServidor['fechaHora'] as String;
@@ -264,7 +270,8 @@ class SalidaLlegadaService {
       'sincronizar': 1,
       'descripcion_reporte': datosServidor['descripcionReporte'],
       'incidencias': datosServidor['incidencias'],
-      'centro_empadronamiento_id': datosServidor['centroEmpadronamiento'],
+      // ✅ CORRECCIÓN DEFINITIVA: Usar el parámetro directamente
+      'centro_empadronamiento_id': puntoEmpadronamientoId,
       'sincronizado': sincronizado ? 1 : 0,
       'fecha_sincronizacion': sincronizado ? DateTime.now().toIso8601String() : null,
       'id_servidor': idServidor,
@@ -275,6 +282,7 @@ class SalidaLlegadaService {
       'updated_at': DateTime.now().toIso8601String(),
     };
   }
+
 
   /// Enviar registro al servidor
   Future<Map<String, dynamic>> _enviarRegistroAlServidor(
@@ -355,4 +363,118 @@ class SalidaLlegadaService {
       };
     }
   }
+
+  // En lib/services/salida_llegada_service_corregido.dart
+
+// ... (después del método registrarSalidaConEmpadronamiento)
+
+  /// ===================================================================
+  /// REGISTRAR LLEGADA (Online/Offline)
+  /// ===================================================================
+  Future<Map<String, dynamic>> registrarLlegadaConEmpadronamiento({
+    required String observaciones,
+    required int idOperador,
+    bool sincronizarConServidor = true,
+    required int puntoEmpadronamientoId,
+    String? latitud,
+    String? longitud,
+  }) async {
+    try {
+      final ahora = DateTime.now();
+      final fechaHora = ahora.toIso8601String();
+      final fechaHoraFormateada = ahora.toIso8601String().replaceFirst('T', ' ').split('.')[0];
+
+      // ✅ DATOS PARA EL SERVIDOR (con estado 'LLEGADA')
+      final datosServidor = {
+        'fechaHora': fechaHoraFormateada,
+        'operadorId': idOperador,
+        'estado': 'LLEGADA', // <--- CAMBIO CLAVE AQUÍ
+        'latitud': latitud ?? '0.0',
+        'longitud': longitud ?? '0.0',
+        'observaciones': observaciones,
+        'sincronizar': 1,
+        'descripcionReporte': null,
+        'incidencias': 'Llegada - Ubicación ${latitud != null ? 'capturada' : 'no capturada'}',
+        'centroEmpadronamiento': puntoEmpadronamientoId,
+      };
+
+      // La lógica de aquí en adelante es idéntica a la de registrarSalida.
+      // Reutilizamos toda la infraestructura de conexión y guardado.
+
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final tieneInternet = connectivityResult != ConnectivityResult.none;
+
+      // CASO 1: CON INTERNET - Enviar directamente al servidor
+      if (tieneInternet && sincronizarConServidor) {
+        try {
+          print('🌐 Intentando enviar LLEGADA directamente al servidor...');
+          final token = await _authService.getAccessToken();
+
+          if (token != null && token.isNotEmpty) {
+            final response = await _enviarRegistroAlServidor(datosServidor, token);
+
+            if (response['success']) {
+              final datosLocal = _crearDatosLocal(
+                datosServidor: datosServidor,
+                fechaHora: fechaHora,
+                idServidor: response['id_servidor'],
+                sincronizado: true,
+                puntoEmpadronamientoId: puntoEmpadronamientoId,
+              );
+              final idLocal = await _databaseService.insertRegistroConCorreccion(datosLocal);
+              print('📱 Llegada también guardada localmente con ID: $idLocal');
+
+              return {
+                'exitoso': true,
+                'mensaje': '✅ Llegada registrada y sincronizada exitosamente',
+                'idLocal': idLocal,
+                'sincronizado': true,
+                'modo': 'ONLINE',
+              };
+            }
+          }
+        } catch (e) {
+          print('⚠️ Error en envío directo de LLEGADA: $e - Continuando con guardado local');
+        }
+      }
+
+      // CASO 2: SIN INTERNET O FALLÓ ENVÍO - Guardar localmente
+      final datosLocal = _crearDatosLocal(
+        datosServidor: datosServidor,
+        fechaHora: fechaHora,
+        idServidor: null,
+        sincronizado: false,
+        puntoEmpadronamientoId: puntoEmpadronamientoId,
+      );
+
+      final idLocal = await _databaseService.insertRegistroConCorreccion(datosLocal);
+
+      if (idLocal == -1) {
+        throw Exception('Error al guardar LLEGADA en la base de datos local');
+      }
+
+      print('✅ Llegada guardada localmente con ID: $idLocal');
+
+      String mensajeSincronizacion = tieneInternet
+          ? '⚠️ Guardado localmente (error en envío)'
+          : '📱 Guardado localmente (sin internet)';
+
+      return {
+        'exitoso': true,
+        'mensaje': 'Llegada registrada. $mensajeSincronizacion',
+        'idLocal': idLocal,
+        'sincronizado': false,
+        'modo': tieneInternet ? 'ONLINE_FAILED' : 'OFFLINE',
+      };
+    } catch (e) {
+      print('❌ Error al registrar llegada: $e');
+      return {
+        'exitoso': false,
+        'mensaje': 'Error al registrar llegada: ${e.toString()}',
+        'sincronizado': false,
+        'modo': 'ERROR',
+      };
+    }
+  }
+
 }
