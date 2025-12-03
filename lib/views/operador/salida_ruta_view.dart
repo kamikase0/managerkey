@@ -4,8 +4,10 @@ import '../../models/user_model.dart';
 import '../../services/location_service.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/salida_llegada_service.dart';
+//import '../../services/salida_llegada_service.dart';
+import '../../services/salida_llegada_service_corregido.dart';
 import '../../services/punto_empadronamiento_service.dart';
+import '../../services/salida_llegada_service_corregido.dart' as SalidaServiceCorregido;
 import '../../models/punto_empadronamiento_model.dart';
 import '../../utils/alert_helper.dart';
 import '../../widgets/sync_monitor_widget.dart'; // ✅ NUEVO: Importar widget de sincronización
@@ -29,7 +31,8 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   String _userEmail = 'Cargando...';
   User? _currentUser;
   late AuthService _authService;
-  late SalidaLlegadaService _salidaLlegadaService;
+  // late SalidaLlegadaService _salidaLlegadaService;
+  late SalidaServiceCorregido.SalidaLlegadaService _salidaLlegadaService;
 
   // ✅ NUEVAS VARIABLES PARA EMPADRONAMIENTO
   String? _provinciaSeleccionada;
@@ -51,7 +54,8 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   void initState() {
     super.initState();
     _authService = AuthService();
-    _salidaLlegadaService = SalidaLlegadaService();
+    _salidaLlegadaService = SalidaServiceCorregido.SalidaLlegadaService();
+
     _loadUserData();
     _cargarDatosEmpadronamiento();
     _verificarEstadoGPS();
@@ -215,7 +219,9 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
   }
 
   // ✅ ACTUALIZADO: Método registrar salida con manejo mejorado de offline
+  // ✅ CORREGIDO: Método registrar salida con manejo mejorado de offline
   Future<void> _registrarSalida() async {
+
     if (_provinciaSeleccionada == null || _puntoEmpadronamientoId == null) {
       AlertHelper.showError(
         context: context,
@@ -850,4 +856,5 @@ class _SalidaRutaViewState extends State<SalidaRutaView> {
       },
     );
   }
+
 }

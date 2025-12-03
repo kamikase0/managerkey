@@ -41,7 +41,6 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _syncService = Provider.of<ReporteSyncService>(context, listen: false);
     _authService = Provider.of<AuthService>(context, listen: false);
-    _apiService = null;
     _loadUserData();
     _initializeSyncService();
   }
@@ -50,24 +49,33 @@ class _HomePageState extends State<HomePage> {
   void _initializeSyncStream() {
     if (_syncStream == null) {
       _syncStream = _syncService.syncStatusStream.asBroadcastStream();
+      print("Stream  de sincronizacion inicializado");
     }
   }
 
-  /// ✅ CORREGIDO: Inicializar el servicio de sincronización
+  /// ✅ CORREGIDO: Inicializar el servicio de sincronización con token
   Future<void> _initializeSyncService() async {
     try {
+      print('🔧 Inicializando servicio de sincronización...');
 
       final token = await _authService.getAccessToken();
-      if (token != null) {
-        _apiService = ApiService(accessToken: token);
+
+      if (token != null && token.isNotEmpty) {
+        // ✅ Inicializar ReporteSyncService con el token
         await _syncService.initialize(accessToken: token);
+
         _initializeSyncStream();
-        print('✅ Servicio de sincronización inicializado en HomePage');
+
+        print('✅ Servicio de sincronización inicializado con token');
+
+        // Iniciar sincronización manual después de 2 segundos
+        await Future.delayed(const Duration(seconds: 2));
+        await _syncService.syncNow();
       } else {
         print('⚠️ No hay token disponible para inicializar sincronización');
       }
     } catch (e) {
-      print('❌ Error inicializando servicio de sincronización: $e');
+      print('❌ Error inicializando sincronización: $e');
     }
   }
 

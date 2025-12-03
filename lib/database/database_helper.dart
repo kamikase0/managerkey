@@ -1,81 +1,132 @@
-import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/punto_empadronamiento_model.dart';
+import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
-  static final DatabaseHelper _instance = DatabaseHelper._internal();
-
-  factory DatabaseHelper() => _instance;
-
-  DatabaseHelper._internal();
-
+  static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+
+  DatabaseHelper._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDatabase();
+    _database = await _initDB('manager_key.db');
     return _database!;
   }
 
-  Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'empadronamiento.db');
-    return await openDatabase(path, version: 1, onCreate: _onCreate);
+  Future<Database> _initDB(String filePath) async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, filePath);
+
+    print('📁 Inicializando base de datos en: $path');
+
+    return await openDatabase(
+      path,
+      version: 4, // Incrementa a 4 para forzar creación
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
-  Future<void> _onCreate(Database db, int version) async {
+  Future<void> _createDB(Database db, int version) async {
+    print('🆕 Creando tablas desde cero (versión $version)...');
+    await _crearTodasLasTablas(db);
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    print('🔄 Actualizando BD de $oldVersion a $newVersion');
+
+    if (oldVersion < 4) {
+      // Si viene de versión anterior, crear todas las tablas
+      await _crearTodasLasTablas(db);
+    }
+  }
+
+  Future<void> _crearTodasLasTablas(Database db) async {
+    await _crearTablaRegistrosDespliegue(db);
+    // Agrega otras tablas si las necesitas
+  }
+
+  Future<void> _crearTablaRegistrosDespliegue(Database db) async {
+    print('📊 Creando/Verificando tabla registros_despliegue...');
+
     await db.execute('''
-      CREATE TABLE puntos_empadronamiento(
-        id INTEGER PRIMARY KEY,
-        provincia TEXT NOT NULL,
-        punto_de_empadronamiento TEXT NOT NULL
+      CREATE TABLE IF NOT EXISTS registros_despliegue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        operadorId INTEGER NOT NULL,
+        estado TEXT NOT NULL,
+        fecha_hora TEXT NOT NULL,
+        latitud TEXT,
+        longitud TEXT,
+        observaciones TEXT,
+        centroEmpadronamiento INTEGER,
+        sincronizar INTEGER DEFAULT 1,
+        sincronizado INTEGER DEFAULT 0,
+        fecha_sincronizacion TEXT,
+        descripcion_reporte TEXT,
+        incidencias TEXT,
+        created_at TEXT,
+        updated_at TEXT
       )
     ''');
+
+    print('✅ Tabla registros_despliegue creada/verificada');
   }
 
-  // Insertar todos los puntos
-  Future<void> insertarPuntos(List<PuntoEmpadronamiento> puntos) async {
-    final db = await database;
+  // Método para verificar todas las tablas
+  Future<void> verificarTodasLasTablas() async {
+    try {
+      final db = await database;
 
-    // Limpiar tabla antes de insertar
-    await db.delete('puntos_empadronamiento');
+      // Obtener todas las tablas
+      final tablas = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+      );
 
-    // Insertar en lote
-    final batch = db.batch();
-    for (var punto in puntos) {
-      batch.insert('puntos_empadronamiento', punto.toJson());
+      print('📋 LISTA COMPLETA DE TABLAS EN LA BD:');
+      if (tablas.isEmpty) {
+        print('   ⚠️ No hay tablas en la base de datos');
+      } else {
+        for (var tabla in tablas) {
+          final nombreTabla = tabla['name'] as String;
+          print('   - $nombreTabla');
+
+          // Mostrar estructura de cada tabla
+          if (nombreTabla != 'sqlite_sequence') {
+            final estructura = await db.rawQuery(
+                'PRAGMA table_info($nombreTabla)'
+            );
+
+            print('     Columnas:');
+            for (var col in estructura) {
+              final nombre = col['name'];
+              final tipo = col['type'];
+              final notnull = col['notnull'] == 1 ? 'NOT NULL' : 'NULL';
+              print('       $nombre $tipo $notnull');
+            }
+          }
+        }
+      }
+
+    } catch (e) {
+      print('❌ Error verificando tablas: $e');
     }
-    await batch.commit();
   }
 
-  // Obtener todas las provincias
-  Future<List<String>> obtenerProvincias() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.rawQuery(
-      'SELECT DISTINCT provincia FROM puntos_empadronamiento ORDER BY provincia',
-    );
-    return maps.map((map) => map['provincia'] as String).toList();
-  }
+  // Método para forzar recreación de tablas
+  Future<void> recrearTablas() async {
+    try {
+      final db = await database;
+      print('🔄 Forzando recreación de tablas...');
 
-  // Obtener puntos por provincia
-  Future<List<String>> obtenerPuntosPorProvincia(String provincia) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'puntos_empadronamiento',
-      where: 'provincia = ?',
-      whereArgs: [provincia],
-      columns: ['punto_de_empadronamiento'],
-    );
-    return maps
-        .map((map) => map['punto_de_empadronamiento'] as String)
-        .toList();
-  }
+      // Eliminar tablas si existen
+      await db.execute('DROP TABLE IF EXISTS registros_despliegue');
 
-  // Verificar si hay datos
-  Future<bool> tieneDatos() async {
-    final db = await database;
-    final count = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM puntos_empadronamiento'),
-    );
-    return count != null && count > 0;
+      // Crear tablas nuevamente
+      await _crearTablaRegistrosDespliegue(db);
+
+      print('✅ Tablas recreadas exitosamente');
+    } catch (e) {
+      print('❌ Error recreando tablas: $e');
+    }
   }
 }

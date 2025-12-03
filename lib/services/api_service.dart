@@ -290,6 +290,7 @@ class ApiService {
   /// =============================
   /// 📥 Obtener Registros Despliegue - MÉTODO CORREGIDO
   /// =============================
+  /// 📥 Obtener Registros Despliegue - MÉTODO CORREGIDO
   Future<List<RegistroDespliegue>> obtenerRegistros() async {
     final url = Uri.parse(registrosEndpoint);
 
@@ -298,12 +299,12 @@ class ApiService {
         print('🔔 Solicitando registros desde: $url');
         return http
             .get(
-              url,
-              headers: {
-                'Accept': 'application/json',
-                'Authorization': 'Bearer $token',
-              },
-            )
+          url,
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
             .timeout(const Duration(seconds: 20));
       });
 
@@ -323,19 +324,24 @@ class ApiService {
               registros.add(registro);
             } catch (e) {
               print('❌ Error mapeando registro: $e');
-              // Crear registro de error con todos los parámetros requeridos
-              final registroError = RegistroDespliegue(
+
+              // ✅ CORREGIDO: Obtener operadorId del json si existe
+              int? jsonOperadorId;
+              if (json is Map<String, dynamic> && json.containsKey('operadorId')) {
+                jsonOperadorId = json['operadorId'] as int?;
+              } else if (json is Map<String, dynamic> && json.containsKey('operador_id')) {
+                jsonOperadorId = json['operador_id'] as int?;
+              }
+
+              // ✅ CORREGIDO: Usar el factory createNew en lugar de constructor directo
+              final registroError = RegistroDespliegue.createNew(
+                fechaHora: DateTime.now().toIso8601String(),
+                operadorId: jsonOperadorId ?? 0, // Usar el valor del json o 0 por defecto
+                estado: 'ERROR',
                 latitud: '0',
                 longitud: '0',
-                descripcionReporte: null,
-                estado: 'ERROR',
-                sincronizar: false,
-                observaciones: 'Error parsing data',
-                incidencias: '',
-                fechaHora: DateTime.now().toIso8601String(),
-                operadorId: 0,
-                sincronizado: false,
-                // ✅ PARÁMETRO REQUERIDO
+                observaciones: 'Error en sincronización: $e',
+                incidencias: 'Error en API',
                 centroEmpadronamiento: null,
               );
               registros.add(registroError);

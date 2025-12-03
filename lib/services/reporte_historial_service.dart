@@ -1,64 +1,53 @@
 // lib/services/reporte_historial_service.dart
-
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/reporte_diario_historial.dart';
-
-import 'api_service.dart';
+import '../config/enviroment.dart';
 import 'auth_service.dart';
-import 'database_service.dart'; // Tu servicio de base de datos local
 
 class ReporteHistorialService {
   final AuthService _authService = AuthService();
-  final DatabaseService _databaseService = DatabaseService();
 
-  /// Método principal para obtener el historial de reportes.
-  /// Decide si obtenerlos de la API (online) o de la BD local (offline).
   Future<List<ReporteDiarioHistorial>> getHistorialReportes() async {
-    final connectivityResult = await (Connectivity().checkConnectivity());
-    final tieneInternet = connectivityResult != ConnectivityResult.none;
-
-    if (tieneInternet) {
-      // CASO ONLINE: Obtener de la API
-      print('🌐 Modo Online: Obteniendo historial desde la API.');
-      return _getReportesFromApi();
-    } else {
-      // CASO OFFLINE: Obtener de la base de datos local
-      print('💾 Modo Offline: Obteniendo reportes locales no sincronizados.');
-      return _getReportesFromDb();
-    }
-  }
-
-  /// Obtiene los reportes del servidor a través de la API.
-  Future<List<ReporteDiarioHistorial>> _getReportesFromApi() async {
     try {
-      final user = await _authService.getCurrentUser();
-      final accessToken = await _authService.getAccessToken();
-
-      if (user == null || accessToken == null) {
-        throw Exception('Usuario no autenticado o token no disponible.');
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        throw Exception('No hay token de autenticación');
       }
 
-      final apiService = ApiService(accessToken: accessToken);
-      // Asume que tienes un endpoint en tu ApiService para esto
-      final List<dynamic> jsonData = await apiService.getReportesDiariosOperador(user.operador!.idOperador);
+      final url = '${Enviroment.apiUrlDev}reportesdiarios/';
 
-      return jsonData.map((json) => ReporteDiarioHistorial.fromJson(json)).toList();
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+
+        return data.map((item) {
+          return ReporteDiarioHistorial.fromJson(item);
+        }).toList();
+      } else {
+        throw Exception('Error al obtener historial: ${response.statusCode}');
+      }
     } catch (e) {
-      print('❌ Error al obtener reportes de la API: $e');
-      throw Exception('No se pudo cargar el historial desde el servidor.');
+      print('❌ Error en getHistorialReportes: $e');
+      rethrow;
     }
   }
 
-  /// Obtiene los reportes no sincronizados de la base de datos SQLite.
-  Future<List<ReporteDiarioHistorial>> _getReportesFromDb() async {
+  // Método alternativo para obtener desde base de datos local si tienes
+  Future<List<ReporteDiarioHistorial>> getHistorialLocal() async {
     try {
-      // Asume que tienes un método en tu DatabaseService para esto
-      final List<Map<String, dynamic>> maps = await _databaseService.getReportesDiariosNoSincronizados();
-
-      return maps.map((map) => ReporteDiarioHistorial.fromDb(map)).toList();
+      // Aquí puedes obtener datos de SQLite si los almacenas localmente
+      return [];
     } catch (e) {
-      print('❌ Error al obtener reportes de la BD local: $e');
-      throw Exception('No se pudo cargar el historial local.');
+      print('❌ Error obteniendo historial local: $e');
+      return [];
     }
   }
 }

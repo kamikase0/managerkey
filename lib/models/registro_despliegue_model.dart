@@ -1,320 +1,305 @@
-// models/registro_despliegue_model.dart
+// lib/models/registro_despliegue_model.dart (VERSIÓN CORREGIDA)
+import 'dart:convert';
+
 class RegistroDespliegue {
   final int? id;
-  final String latitud;
-  final String longitud;
-  final String? descripcionReporte;
-  final String estado;
-  final bool sincronizar;
-  final String? observaciones;
-  final String? incidencias;
   final String fechaHora;
   final int operadorId;
-  final bool sincronizado;
+  final String estado;
+  final String latitud;
+  final String longitud;
+  final String? observaciones;
+  final bool sincronizar;
+  final String? descripcionReporte;
+  final String? incidencias;
   final int? centroEmpadronamiento;
+  final int sincronizado;
   final String? fechaSincronizacion;
-
-  // Nuevos campos para offline
   final int? idServidor;
-  final String? fechaCreacionLocal;
+  final String fechaCreacionLocal;
   final int intentos;
   final String? ultimoIntento;
-  final int? operador_id;
-  final int? centro_empadronamiento_id;
+  final String? createdAt;
+  final String? updatedAt;
 
   RegistroDespliegue({
     this.id,
-    required this.latitud,
-    required this.longitud,
-    this.descripcionReporte,
-    required this.estado,
-    required this.sincronizar,
-    required this.observaciones,
-    required this.incidencias,
     required this.fechaHora,
     required this.operadorId,
-    required this.sincronizado,
+    required this.estado,
+    required this.latitud,
+    required this.longitud,
+    this.observaciones,
+    required this.sincronizar,
+    this.descripcionReporte,
+    this.incidencias,
     this.centroEmpadronamiento,
+    required this.sincronizado,
     this.fechaSincronizacion,
-    // Nuevos campos
     this.idServidor,
-    this.fechaCreacionLocal,
-    this.intentos = 0,
+    required this.fechaCreacionLocal,
+    required this.intentos,
     this.ultimoIntento,
-    this.operador_id,
-    this.centro_empadronamiento_id,
+    this.createdAt,
+    this.updatedAt,
   });
 
+  // Método para crear desde un Map (para BD local)
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'fecha_hora': fechaHora,
+      'operador_id': operadorId,
+      'estado': estado,
+      'latitud': latitud,
+      'longitud': longitud,
+      'observaciones': observaciones,
+      'sincronizar': sincronizar ? 1 : 0,
+      'descripcion_reporte': descripcionReporte,
+      'incidencias': incidencias,
+      'centro_empadronamiento_id': centroEmpadronamiento,
+      'sincronizado': sincronizado,
+      'fecha_sincronizacion': fechaSincronizacion,
+      'id_servidor': idServidor,
+      'fecha_creacion_local': fechaCreacionLocal,
+      'intentos': intentos,
+      'ultimo_intento': ultimoIntento,
+      'created_at': createdAt,
+      'updated_at': updatedAt,
+    };
+  }
+
+  // Método para crear desde un Map de la BD local
   factory RegistroDespliegue.fromMap(Map<String, dynamic> map) {
     return RegistroDespliegue(
       id: map['id'] as int?,
+      fechaHora: map['fecha_hora'] as String,
+      operadorId: map['operador_id'] as int,
+      estado: map['estado'] as String,
       latitud: map['latitud'] as String,
       longitud: map['longitud'] as String,
-      descripcionReporte: map['descripcionReporte'] as String?,
-      estado: map['estado'] as String,
-      sincronizar: (map['sincronizar'] as int?) == 1,
       observaciones: map['observaciones'] as String?,
+      sincronizar: (map['sincronizar'] as int?) == 1,
+      descripcionReporte: map['descripcion_reporte'] as String?,
       incidencias: map['incidencias'] as String?,
-      fechaHora: map['fechaHora'] as String,
-      operadorId: map['operadorId'] as int? ?? map['operador_id'] as int? ?? 0,
-      sincronizado: (map['sincronizado'] as int?) == 1,
-      centroEmpadronamiento: map['centroEmpadronamiento'] as int? ??
-          map['centro_empadronamiento_id'] as int?,
-      fechaSincronizacion: map['fechaSincronizacion'] as String?,
-      // Nuevos campos
-      idServidor: map['idServidor'] as int?,
-      fechaCreacionLocal: map['fechaCreacionLocal'] as String?,
-      intentos: map['intentos'] as int? ?? 0,
-      ultimoIntento: map['ultimoIntento'] as String?,
-      operador_id: map['operador_id'] as int?,
-      centro_empadronamiento_id: map['centro_empadronamiento_id'] as int?,
+      centroEmpadronamiento: map['centro_empadronamiento_id'] as int?,
+      sincronizado: map['sincronizado'] as int,
+      fechaSincronizacion: map['fecha_sincronizacion'] as String?,
+      idServidor: map['id_servidor'] as int?,
+      fechaCreacionLocal: map['fecha_creacion_local'] as String,
+      intentos: map['intentos'] as int,
+      ultimoIntento: map['ultimo_intento'] as String?,
+      createdAt: map['created_at'] as String?,
+      updatedAt: map['updated_at'] as String?,
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      if (id != null) 'id': id,
+  /// ✅ MÉTODO CORREGIDO: Convertir a JSON para API (campos camelCase)
+  /// Garantiza que NO hay campos NULL innecesarios
+  Map<String, dynamic> toApiMap() {
+    print('🔄 Creando mapa para API (ID Local: $id)...');
+
+    final mapa = {
+      'fechaHora': fechaHora, // ✅ NUNCA NULL
+      'operadorId': operadorId,
+      'estado': estado,
       'latitud': latitud,
       'longitud': longitud,
-      'descripcionReporte': descripcionReporte,
-      'estado': estado,
+      'observaciones': observaciones ?? '',
       'sincronizar': sincronizar ? 1 : 0,
-      'observaciones': observaciones,
-      'incidencias': incidencias,
-      'fechaHora': fechaHora,
-      'operadorId': operadorId,
-      'sincronizado': sincronizado ? 1 : 0,
-      'centroEmpadronamiento': centroEmpadronamiento,
-      'fechaSincronizacion': fechaSincronizacion,
-      // Nuevos campos
-      'idServidor': idServidor,
-      'fechaCreacionLocal': fechaCreacionLocal,
-      'intentos': intentos,
-      'ultimoIntento': ultimoIntento,
-      'operador_id': operador_id ?? operadorId,
-      'centro_empadronamiento_id': centro_empadronamiento_id ?? centroEmpadronamiento,
+      'incidencias': incidencias ?? 'Ubicación capturada',
+      'centroEmpadronamiento': centroEmpadronamiento, // ✅ NUNCA NULL
     };
+
+    // ✅ Campos opcionales - solo incluir si tienen valor
+    if (descripcionReporte != null) {
+      mapa['descripcionReporte'] = descripcionReporte;
+    }
+    if (fechaSincronizacion != null) {
+      mapa['fechaSincronizacion'] = fechaSincronizacion;
+    }
+    if (idServidor != null) {
+      mapa['idServidor'] = idServidor;
+    }
+    if (createdAt != null) {
+      mapa['createdAt'] = createdAt;
+    }
+    if (updatedAt != null) {
+      mapa['updatedAt'] = updatedAt;
+    }
+
+    print('✅ Mapa para API creado:');
+    mapa.forEach((key, value) {
+      print('  - $key: $value (${value.runtimeType})');
+    });
+
+    return mapa;
   }
 
-  Map<String, dynamic> toApiMap() {
-    return {
-      'fecha_hora': fechaHora,
-      'operador': operador_id ?? operadorId,
-      'estado': estado,
-      'latitud': double.tryParse(latitud) ?? 0,
-      'longitud': double.tryParse(longitud) ?? 0,
-      'observaciones': observaciones,
-      'sincronizar': sincronizar,
-      'descripcion_reporte': descripcionReporte,
-      'incidencias': incidencias,
-      'centro_empadronamiento': centro_empadronamiento_id ?? centroEmpadronamiento,
-    };
-  }
-
-  /// -----------------------------------------------------------------
-  /// ✅ CONSTRUCTOR DESDE LA API
-  /// Lee desde snake_case de la API y construye el objeto.
-  /// -----------------------------------------------------------------
+  /// Método para crear desde un Map de la API (campos camelCase)
   factory RegistroDespliegue.fromApiMap(Map<String, dynamic> map) {
+    // Manejar el caso donde sincronizar puede venir como int o bool
+    dynamic sincronizarValue = map['sincronizar'];
+    bool sincronizarBool;
+
+    if (sincronizarValue is bool) {
+      sincronizarBool = sincronizarValue;
+    } else if (sincronizarValue is int) {
+      sincronizarBool = sincronizarValue == 1;
+    } else {
+      sincronizarBool = true;
+    }
+
     return RegistroDespliegue(
-      id: map['id'],
-      latitud: map['latitud']?.toString() ?? '0.0',
-      longitud: map['longitud']?.toString() ?? '0.0',
-      descripcionReporte: map['descripcion_reporte'],
-      estado: map['estado'],
-      sincronizar: map['sincronizar'] ?? true,
-      observaciones: map['observaciones'],
-      incidencias: map['incidencias'],
-      fechaHora: map['fecha_hora'],
-      operadorId: map['operador'],
-      sincronizado: true, // Se asume sincronizado porque viene de la API
-      centroEmpadronamiento: map['centro_empadronamiento'],
-      fechaSincronizacion: map['fecha_sincronizacion'],
+      id: map['id'] as int?,
+      fechaHora: map['fechaHora'] as String,
+      operadorId: map['operadorId'] as int,
+      estado: map['estado'] as String,
+      latitud: map['latitud'] as String,
+      longitud: map['longitud'] as String,
+      observaciones: map['observaciones'] as String?,
+      sincronizar: sincronizarBool,
+      descripcionReporte: map['descripcionReporte'] as String?,
+      incidencias: map['incidencias'] as String?,
+      centroEmpadronamiento: map['centroEmpadronamiento'] as int?,
+      sincronizado: map['sincronizado'] as int? ?? 0,
+      fechaSincronizacion: map['fechaSincronizacion'] as String?,
+      idServidor: map['idServidor'] as int?,
+      fechaCreacionLocal: map['fechaCreacionLocal'] as String? ?? DateTime.now().toIso8601String(),
+      intentos: map['intentos'] as int? ?? 0,
+      ultimoIntento: map['ultimoIntento'] as String?,
+      createdAt: map['createdAt'] as String?,
+      updatedAt: map['updatedAt'] as String?,
     );
   }
 
-    Map<String, dynamic> toJsonForApi() {
-    return {
-      'centro_empadronamiento': centroEmpadronamiento,
-      'latitud': double.tryParse(latitud) ?? 0.0,
-      'longitud': double.tryParse(longitud) ?? 0.0,
-      'descripcion_reporte': descripcionReporte,
-      'estado': estado,
-      'sincronizar': sincronizar,
-      'observaciones': observaciones,
-      'incidencias': incidencias,
-      'fecha_hora': fechaHora,
-      'operador': operadorId,
-    };
+  // Factory simplificado para crear nuevos registros
+  factory RegistroDespliegue.createNew({
+    required String fechaHora,
+    required int operadorId,
+    required String estado,
+    required String latitud,
+    required String longitud,
+    String? observaciones,
+    bool sincronizar = true,
+    String? descripcionReporte,
+    String? incidencias,
+    int? centroEmpadronamiento,
+  }) {
+    final now = DateTime.now().toIso8601String();
+
+    // ✅ Validaciones
+    if (fechaHora.isEmpty) {
+      throw ArgumentError('fechaHora no puede estar vacío');
+    }
+    if (centroEmpadronamiento == null || centroEmpadronamiento == 0) {
+      throw ArgumentError('centroEmpadronamiento no puede ser null o 0');
+    }
+
+    return RegistroDespliegue(
+      fechaHora: fechaHora,
+      operadorId: operadorId,
+      estado: estado,
+      latitud: latitud,
+      longitud: longitud,
+      observaciones: observaciones,
+      sincronizar: sincronizar,
+      descripcionReporte: descripcionReporte,
+      incidencias: incidencias ?? 'Ubicación capturada',
+      centroEmpadronamiento: centroEmpadronamiento,
+      sincronizado: 0,
+      fechaSincronizacion: null,
+      idServidor: null,
+      fechaCreacionLocal: now,
+      intentos: 0,
+      ultimoIntento: null,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  // Método para crear copia con modificaciones
+  RegistroDespliegue copyWith({
+    int? id,
+    String? fechaHora,
+    int? operadorId,
+    String? estado,
+    String? latitud,
+    String? longitud,
+    String? observaciones,
+    bool? sincronizar,
+    String? descripcionReporte,
+    String? incidencias,
+    int? centroEmpadronamiento,
+    int? sincronizado,
+    String? fechaSincronizacion,
+    int? idServidor,
+    String? fechaCreacionLocal,
+    int? intentos,
+    String? ultimoIntento,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return RegistroDespliegue(
+      id: id ?? this.id,
+      fechaHora: fechaHora ?? this.fechaHora,
+      operadorId: operadorId ?? this.operadorId,
+      estado: estado ?? this.estado,
+      latitud: latitud ?? this.latitud,
+      longitud: longitud ?? this.longitud,
+      observaciones: observaciones ?? this.observaciones,
+      sincronizar: sincronizar ?? this.sincronizar,
+      descripcionReporte: descripcionReporte ?? this.descripcionReporte,
+      incidencias: incidencias ?? this.incidencias,
+      centroEmpadronamiento: centroEmpadronamiento ?? this.centroEmpadronamiento,
+      sincronizado: sincronizado ?? this.sincronizado,
+      fechaSincronizacion: fechaSincronizacion ?? this.fechaSincronizacion,
+      idServidor: idServidor ?? this.idServidor,
+      fechaCreacionLocal: fechaCreacionLocal ?? this.fechaCreacionLocal,
+      intentos: intentos ?? this.intentos,
+      ultimoIntento: ultimoIntento ?? this.ultimoIntento,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'RegistroDespliegue(id: $id, estado: $estado, operadorId: $operadorId, fechaHora: $fechaHora, centroEmpadronamiento: $centroEmpadronamiento, sincronizado: $sincronizado)';
+  }
+
+  // Método para verificar si es igual a otro registro
+  bool isEqualTo(RegistroDespliegue other) {
+    return fechaHora == other.fechaHora &&
+        operadorId == other.operadorId &&
+        estado == other.estado &&
+        latitud == other.latitud &&
+        longitud == other.longitud &&
+        centroEmpadronamiento == other.centroEmpadronamiento;
+  }
+
+  // ✅ NUEVO: Método para validar que el registro esté completo
+  bool isValid() {
+    return fechaHora.isNotEmpty &&
+        operadorId > 0 &&
+        centroEmpadronamiento != null &&
+        centroEmpadronamiento! > 0 &&
+        latitud.isNotEmpty &&
+        longitud.isNotEmpty;
+  }
+
+  // ✅ NUEVO: Método para obtener detalles de validación
+  List<String> getValidationErrors() {
+    final errors = <String>[];
+
+    if (fechaHora.isEmpty) errors.add('fechaHora está vacío');
+    if (operadorId <= 0) errors.add('operadorId inválido');
+    if (centroEmpadronamiento == null || centroEmpadronamiento! <= 0) {
+      errors.add('centroEmpadronamiento está vacío o es 0');
+    }
+    if (latitud.isEmpty) errors.add('latitud está vacío');
+    if (longitud.isEmpty) errors.add('longitud está vacío');
+
+    return errors;
   }
 }
-
-// // lib/models/registro_despliegue_model.dart
-//
-// class RegistroDespliegue {
-//   final int? id;
-//   final String latitud;
-//   final String longitud;
-//   final String? descripcionReporte;
-//   final String estado;
-//   final bool sincronizar;
-//   final String? observaciones;
-//   final String? incidencias;
-//   final String fechaHora;
-//   final int operadorId;
-//   final bool sincronizado;
-//   final int? centroEmpadronamiento;
-//   final String? fechaSincronizacion;
-//
-//   RegistroDespliegue({
-//     this.id,
-//     required this.latitud,
-//     required this.longitud,
-//     this.descripcionReporte,
-//     required this.estado,
-//     required this.sincronizar,
-//     this.observaciones,
-//     this.incidencias,
-//     required this.fechaHora,
-//     required this.operadorId,
-//     required this.sincronizado,
-//     this.centroEmpadronamiento,
-//     this.fechaSincronizacion,
-//   });
-//
-//     Map<String, dynamic> toJsonForApi() {
-//     return {
-//       'centro_empadronamiento': centroEmpadronamiento,
-//       'latitud': double.tryParse(latitud) ?? 0.0,
-//       'longitud': double.tryParse(longitud) ?? 0.0,
-//       'descripcion_reporte': descripcionReporte,
-//       'estado': estado,
-//       'sincronizar': sincronizar,
-//       'observaciones': observaciones,
-//       'incidencias': incidencias,
-//       'fecha_hora': fechaHora,
-//       'operador': operadorId,
-//     };
-//   }
-//
-//   /// -----------------------------------------------------------------
-//   /// ✅ MAPEO PARA LA BASE DE DATOS LOCAL (SQFLITE)
-//   /// Usa snake_case para coincidir con la definición de la tabla.
-//   /// -----------------------------------------------------------------
-//   Map<String, dynamic> toMap() {
-//     return {
-//       'id': id,
-//       'latitud': latitud,
-//       'longitud': longitud,
-//       // 'descripcionReporte' -> No existe en tu tabla, no lo incluimos
-//       'estado': estado,
-//       'sincronizar': sincronizar ? 1 : 0,
-//       'observaciones': observaciones,
-//       'incidencias': incidencias,
-//       'fecha_hora': fechaHora,      // snake_case
-//       'operador': operadorId,     // snake_case
-//       'sincronizado': sincronizado ? 1 : 0,
-//       'centro_empadronamiento': centroEmpadronamiento, // snake_case
-//       'fecha_sincronizacion': fechaSincronizacion,      // snake_case
-//     };
-//   }
-//
-//   /// -----------------------------------------------------------------
-//   /// ✅ CONSTRUCTOR DESDE LA BASE DE DATOS LOCAL (SQFLITE)
-//   /// Lee desde snake_case y construye el objeto.
-//   /// -----------------------------------------------------------------
-//   factory RegistroDespliegue.fromMap(Map<String, dynamic> map) {
-//     return RegistroDespliegue(
-//       id: map['id'],
-//       latitud: map['latitud'] ?? '',
-//       longitud: map['longitud'] ?? '',
-//       // descripcionReporte no se lee porque no existe en la tabla
-//       estado: map['estado'] ?? 'DESPLIEGUE',
-//       sincronizar: map['sincronizar'] == 1,
-//       observaciones: map['observaciones'],
-//       incidencias: map['incidencias'],
-//       fechaHora: map['fecha_hora'] ?? '', // snake_case
-//       operadorId: map['operador'] ?? 0,   // snake_case
-//       sincronizado: map['sincronizado'] == 1,
-//       centroEmpadronamiento: map['centro_empadronamiento'], // snake_case
-//       fechaSincronizacion: map['fecha_sincronizacion'],      // snake_case
-//     );
-//   }
-//
-//   /// -----------------------------------------------------------------
-//   /// ✅ MAPEO PARA LA API (SNAKE_CASE)
-//   /// Coincide con lo que tu API espera.
-//   /// -----------------------------------------------------------------
-//   Map<String, dynamic> toApiMap() {
-//     return {
-//       'latitud': latitud,
-//       'longitud': longitud,
-//       'descripcion_reporte': descripcionReporte,
-//       'estado': estado,
-//       'sincronizar': sincronizar,
-//       'observaciones': observaciones,
-//       'incidencias': incidencias,
-//       'fecha_hora': fechaHora,
-//       'operador': operadorId,
-//       'centro_empadronamiento': centroEmpadronamiento,
-//     };
-//   }
-//
-//   /// -----------------------------------------------------------------
-//   /// ✅ CONSTRUCTOR DESDE LA API
-//   /// Lee desde snake_case de la API y construye el objeto.
-//   /// -----------------------------------------------------------------
-//   factory RegistroDespliegue.fromApiMap(Map<String, dynamic> map) {
-//     return RegistroDespliegue(
-//       id: map['id'],
-//       latitud: map['latitud']?.toString() ?? '0.0',
-//       longitud: map['longitud']?.toString() ?? '0.0',
-//       descripcionReporte: map['descripcion_reporte'],
-//       estado: map['estado'],
-//       sincronizar: map['sincronizar'] ?? true,
-//       observaciones: map['observaciones'],
-//       incidencias: map['incidencias'],
-//       fechaHora: map['fecha_hora'],
-//       operadorId: map['operador'],
-//       sincronizado: true, // Se asume sincronizado porque viene de la API
-//       centroEmpadronamiento: map['centro_empadronamiento'],
-//       fechaSincronizacion: map['fecha_sincronizacion'],
-//     );
-//   }
-//
-//   /// -----------------------------------------------------------------
-//   /// ✅ MÉTODO COPYWITH
-//   /// Útil para crear una copia del objeto modificando algunos campos.
-//   /// -----------------------------------------------------------------
-//   RegistroDespliegue copyWith({
-//     int? id,
-//     String? latitud,
-//     String? longitud,
-//     String? descripcionReporte,
-//     String? estado,
-//     bool? sincronizar,
-//     String? observaciones,
-//     String? incidencias,
-//     String? fechaHora,
-//     int? operadorId,
-//     bool? sincronizado,
-//     int? centroEmpadronamiento,
-//     String? fechaSincronizacion,
-//   }) {
-//     return RegistroDespliegue(
-//       id: id ?? this.id,
-//       latitud: latitud ?? this.latitud,
-//       longitud: longitud ?? this.longitud,
-//       descripcionReporte: descripcionReporte ?? this.descripcionReporte,
-//       estado: estado ?? this.estado,
-//       sincronizar: sincronizar ?? this.sincronizar,
-//       observaciones: observaciones ?? this.observaciones,
-//       incidencias: incidencias ?? this.incidencias,
-//       fechaHora: fechaHora ?? this.fechaHora,
-//       operadorId: operadorId ?? this.operadorId,
-//       sincronizado: sincronizado ?? this.sincronizado,
-//       centroEmpadronamiento: centroEmpadronamiento ?? this.centroEmpadronamiento,
-//       fechaSincronizacion: fechaSincronizacion ?? this.fechaSincronizacion,
-//     );
-//   }
-// }
