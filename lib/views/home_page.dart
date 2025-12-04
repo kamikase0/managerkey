@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:manager_key/views/operador/reporte_diario_view.dart';
 import 'package:manager_key/views/operador/salida_ruta_view.dart';
 import 'package:manager_key/views/operador/llegada_ruta_view.dart';
+// ✅ PASO 1: AÑADIR LA IMPORTACIÓN PARA LA VISTA DE HISTORIAL
+import 'package:manager_key/views/operador/historial_reportes_diarios_view.dart';
 import 'package:manager_key/views/tecnico/recepcion_view.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
@@ -104,7 +106,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// ✅ CORREGIDO: Cargar datos del usuario
+  /// ✅ CORREGIDO Y AJUSTADO: Cargar datos del usuario y establecer vista inicial
   Future<void> _loadUserData() async {
     try {
       final user = await _authService.getCurrentUser();
@@ -115,12 +117,33 @@ class _HomePageState extends State<HomePage> {
           _userGroup = user.primaryGroup;
           _tipoOperador = user.tipoOperador ?? 'Operador Urbano';
           _idOperador = user.idOperador;
-          _activeView = user.isOperadorRural ? 'operador' : 'reporte_diario';
+
+          // --- AJUSTE CLAVE AQUÍ ---
+          // Establecer la vista inicial basada en el grupo del usuario.
+          switch (_userGroup.toLowerCase()) { // Usar toLowerCase para ser robusto
+            case 'operador':
+              _activeView = 'operador';
+              break;
+            case 'coordinador':
+              _activeView = 'coordinador';
+              break;
+            case 'tecnico':
+              _activeView = 'recepcion';
+              break;
+            case 'soporte':
+              _activeView = 'soporte';
+              break;
+            default:
+            // Vista por defecto segura si el grupo no se reconoce.
+              _activeView = 'operador';
+          }
         });
 
         print('✅ Usuario cargado: ${user.username}');
+        print('🔧 Grupo: $_userGroup');
         print('🔧 Tipo Operador: $_tipoOperador');
         print('📍 ID Operador: $_idOperador');
+        print('👀 Vista Inicial: $_activeView');
       } else {
         _setDefaultValues();
       }
@@ -130,27 +153,67 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+
   /// Establecer valores por defecto
   void _setDefaultValues() {
     setState(() {
       _userGroup = 'operador';
       _tipoOperador = 'Operador Urbano';
-      _activeView = 'reporte_diario';
+      _activeView = 'operador';
       _idOperador = null;
     });
   }
 
-  /// ✅ CORREGIDO: Obtener la vista actual
+  /// ✅ AJUSTE FINAL: Lógica de vistas separada por tipo de operador.
+  /// ✅ AJUSTE FINAL: Lógica de vistas separada por tipo de operador.
   Widget _getCurrentView() {
+    // Si el usuario no está cargado, muestra un indicador de carga.
+    if (_currentUser == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // --- Lógica para el grupo "Operador" ---
+    if (_userGroup.toLowerCase() == 'operador') {
+      // Menú para OPERADOR RURAL
+      if (_currentUser!.isOperadorRural) {
+        switch (_activeView) {
+          case 'operador':
+            return const OperadorView();
+          case 'salida_ruta':
+            return SalidaRutaView(idOperador: _idOperador ?? 0);
+          case 'llegada_ruta':
+            return LlegadaRutaView(idOperador: _idOperador ?? 0);
+          case 'reporte_diario':
+            return const ReporteDiarioView();
+          case 'historial':
+            return const HistorialReportesDiariosView();
+          default:
+            return const OperadorView(); // Vista por defecto para Rural
+        }
+      }
+      // Menú para OPERADOR URBANO
+      else if (_currentUser!.isOperadorUrbano) {
+        switch (_activeView) {
+          case 'operador':
+            return const OperadorView();
+        // 'salida_ruta' no está disponible para Urbano
+
+        // ✅ VISTA AÑADIDA PARA OPERADOR URBANO
+          case 'llegada_ruta':
+            return LlegadaRutaView(idOperador: _idOperador ?? 0);
+          case 'reporte_diario':
+            return const ReporteDiarioView();
+          case 'historial':
+            return const HistorialReportesDiariosView();
+          default:
+          // Vista por defecto para Operador Urbano si el estado es inválido
+            return const OperadorView();
+        }
+      }
+    }
+
+    // --- Lógica para otros roles (Coordinador, Soporte, etc.) ---
     switch (_activeView) {
-      case 'operador':
-        return const OperadorView();
-      case 'reporte_diario':
-        return const ReporteDiarioView();
-      case 'salida_ruta':
-        return SalidaRutaView(idOperador: _idOperador ?? 0);
-      case 'llegada_ruta':
-        return LlegadaRutaView(idOperador: _idOperador ?? 0);
       case 'soporte':
         return const SoporteView();
       case 'recepcion':
@@ -158,9 +221,13 @@ class _HomePageState extends State<HomePage> {
       case 'coordinador':
         return const CoordinadorView();
       default:
-        return const OperadorView();
+      // Si se llega aquí, es un rol no-operador con una vista inválida.
+      // Se le redirige a una vista segura.
+        return const Center(child: Text("Bienvenido"));
     }
   }
+
+
 
   /// ✅ NUEVO: Sincronizar ubicaciones pendientes manualmente
   Future<void> _sincronizarUbicacionesManualmente() async {
@@ -597,132 +664,6 @@ class _HomePageState extends State<HomePage> {
     _syncService.dispose();
     super.dispose();
   }
-
-  /// ✅ MÉTODO LOGOUT MEJORADO (reemplaza el actual en home_page.dart)
-  // Future<void> _logout() async {
-  //   print('🔄 ========== INICIANDO LOGOUT ==========');
-  //
-  //   try {
-  //     // ✅ PASO 1: Detener servicios de geolocalización
-  //     print('🌍 PASO 1: Deteniendo geolocalización...');
-  //     try {
-  //       _ubicacionService.detenerCapturaAutomatica();
-  //       print('✅ Geolocalización detenida');
-  //     } catch (e) {
-  //       print('⚠️ Error deteniendo geolocalización: $e');
-  //     }
-  //
-  //     // ✅ PASO 2: Detener sincronización
-  //     print('📊 PASO 2: Deteniendo sincronización...');
-  //     try {
-  //       _syncService.stopSync();
-  //       print('✅ Sincronización detenida');
-  //     } catch (e) {
-  //       print('⚠️ Error deteniendo sincronización: $e');
-  //     }
-  //
-  //     // ✅ PASO 3: Realizar logout en AuthService
-  //     print('🔐 PASO 3: Logout en AuthService...');
-  //     try {
-  //       await _authService.logout();
-  //       print('✅ Logout completado en AuthService');
-  //     } catch (e) {
-  //       print('⚠️ Error en logout de AuthService: $e');
-  //     }
-  //
-  //     // ✅ PASO 4: Diagnosticar estado post-logout
-  //     print('🔍 PASO 4: Diagnosticando estado post-logout...');
-  //     try {
-  //       final diagnostic = await _authService.diagnosticarLogout();
-  //       print('🔍 Diagnóstico: $diagnostic');
-  //
-  //       if (diagnostic['hasAccessToken'] || diagnostic['hasUserData']) {
-  //         print('⚠️ ADVERTENCIA: Aún hay datos residuales!');
-  //         print('   - Access Token: ${diagnostic['hasAccessToken']}');
-  //         print('   - User Data: ${diagnostic['hasUserData']}');
-  //       }
-  //     } catch (e) {
-  //       print('⚠️ Error diagnosticando: $e');
-  //     }
-  //
-  //     // ✅ PASO 5: Esperar un momento para que se limpie todo
-  //     print('⏳ PASO 5: Esperando limpieza de datos...');
-  //     await Future.delayed(const Duration(milliseconds: 500));
-  //
-  //     // ✅ PASO 6: Navegar a Login
-  //     print('🚀 PASO 6: Navegando a LoginPage...');
-  //     if (!mounted) {
-  //       print('⚠️ Widget no está montado, cancelando navegación');
-  //       return;
-  //     }
-  //
-  //     Navigator.of(context).pushAndRemoveUntil(
-  //       MaterialPageRoute(builder: (context) => const LoginPage()),
-  //           (route) => false, // Elimina todo el stack
-  //     );
-  //
-  //     print('✅ ========== LOGOUT COMPLETADO ==========');
-  //   } catch (e) {
-  //     print('❌ ERROR CRÍTICO EN LOGOUT: $e');
-  //
-  //     // Nuclear option: forzar logout incluso si hay error
-  //     if (mounted) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(
-  //           content: Text('Error en logout: $e'),
-  //           backgroundColor: Colors.red,
-  //           duration: const Duration(seconds: 3),
-  //         ),
-  //       );
-  //
-  //       // Intentar navegar de todos modos
-  //       Future.delayed(const Duration(seconds: 1), () {
-  //         if (mounted) {
-  //           Navigator.of(context).pushAndRemoveUntil(
-  //             MaterialPageRoute(builder: (context) => const LoginPage()),
-  //                 (route) => false,
-  //           );
-  //         }
-  //       });
-  //     }
-  //   }
-  // }
-
-  /// ✅ MÉTODO PARA MOSTRAR CONFIRMACIÓN DE LOGOUT
-  // void _showLogoutConfirmation() {
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false, // Evita cerrar tocando afuera
-  //     builder: (BuildContext dialogContext) {
-  //       return AlertDialog(
-  //         title: const Text('Cerrar Sesión'),
-  //         content: const Text(
-  //           '¿Estás seguro de que deseas cerrar sesión? Se limpiarán todos los datos locales.',
-  //         ),
-  //         actions: [
-  //           TextButton(
-  //             onPressed: () {
-  //               print('❌ Usuario canceló logout');
-  //               Navigator.of(dialogContext).pop();
-  //             },
-  //             child: const Text('Cancelar'),
-  //           ),
-  //           TextButton(
-  //             onPressed: () {
-  //               print('✅ Usuario confirmó logout');
-  //               Navigator.of(dialogContext).pop();
-  //               _logout(); // Ejecutar logout después de cerrar el diálogo
-  //             },
-  //             child: const Text(
-  //               'Cerrar Sesión',
-  //               style: TextStyle(color: Colors.red),
-  //             ),
-  //           ),
-  //         ],
-  //       );
-  //     },
-  //   );
-  // }
 
   /// ✅ MÉTODO LOGOUT FINAL Y CORRECTO (reemplaza el actual en home_page.dart)
   Future<void> _logout() async {

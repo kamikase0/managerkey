@@ -52,7 +52,7 @@ class UbicacionService {
     try {
       final authService = AuthService();
       final usuario = await authService.getUserInfo();
-      return usuario['id'] ?? 1;
+      return usuario['idOperador'] ?? 0;
     } catch (e) {
       print('⚠️ Error obteniendo ID operador: $e');
       return 1;

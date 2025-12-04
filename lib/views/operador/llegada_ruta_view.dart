@@ -630,7 +630,7 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'UBICACIÓN DE LLEGADA *',
+              'REGISTRE SU LLEGADA AL DESTINO *',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
