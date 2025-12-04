@@ -11,6 +11,7 @@ import '../services/api_service.dart';
 import '../services/ubicacion_service.dart';
 import '../widgets/sidebar.dart';
 import '../utils/alert_helper.dart';
+import 'login_page.dart';
 import 'operador_view.dart';
 import 'soporte_view.dart';
 import 'coordinador_view.dart';
@@ -159,29 +160,6 @@ class _HomePageState extends State<HomePage> {
       default:
         return const OperadorView();
     }
-  }
-
-  /// ✅ CORREGIDO: Logout - Detener servicios
-  Future<void> _logout() async {
-    // ✅ PASO 1: Detener el servicio de ubicaciones
-    try {
-      print('🌍 Deteniendo servicio de geolocalización...');
-      _ubicacionService.detenerCapturaAutomatica();
-      print('✅ Servicio de geolocalización detenido.');
-    } catch (e) {
-      print('❌ Error al detener el servicio de geolocalización: $e');
-    }
-
-    // ✅ PASO 2: Logout del servicio de autenticación
-    try {
-      await _authService.logout();
-      print('✅ Sesión cerrada correctamente');
-    } catch (e) {
-      print('❌ Error al cerrar sesión: $e');
-    }
-
-    // ✅ PASO 3: Navegar a login
-    widget.onLogout();
   }
 
   /// ✅ NUEVO: Sincronizar ubicaciones pendientes manualmente
@@ -618,5 +596,268 @@ class _HomePageState extends State<HomePage> {
     _ubicacionService.detenerCapturaAutomatica();
     _syncService.dispose();
     super.dispose();
+  }
+
+  /// ✅ MÉTODO LOGOUT MEJORADO (reemplaza el actual en home_page.dart)
+  // Future<void> _logout() async {
+  //   print('🔄 ========== INICIANDO LOGOUT ==========');
+  //
+  //   try {
+  //     // ✅ PASO 1: Detener servicios de geolocalización
+  //     print('🌍 PASO 1: Deteniendo geolocalización...');
+  //     try {
+  //       _ubicacionService.detenerCapturaAutomatica();
+  //       print('✅ Geolocalización detenida');
+  //     } catch (e) {
+  //       print('⚠️ Error deteniendo geolocalización: $e');
+  //     }
+  //
+  //     // ✅ PASO 2: Detener sincronización
+  //     print('📊 PASO 2: Deteniendo sincronización...');
+  //     try {
+  //       _syncService.stopSync();
+  //       print('✅ Sincronización detenida');
+  //     } catch (e) {
+  //       print('⚠️ Error deteniendo sincronización: $e');
+  //     }
+  //
+  //     // ✅ PASO 3: Realizar logout en AuthService
+  //     print('🔐 PASO 3: Logout en AuthService...');
+  //     try {
+  //       await _authService.logout();
+  //       print('✅ Logout completado en AuthService');
+  //     } catch (e) {
+  //       print('⚠️ Error en logout de AuthService: $e');
+  //     }
+  //
+  //     // ✅ PASO 4: Diagnosticar estado post-logout
+  //     print('🔍 PASO 4: Diagnosticando estado post-logout...');
+  //     try {
+  //       final diagnostic = await _authService.diagnosticarLogout();
+  //       print('🔍 Diagnóstico: $diagnostic');
+  //
+  //       if (diagnostic['hasAccessToken'] || diagnostic['hasUserData']) {
+  //         print('⚠️ ADVERTENCIA: Aún hay datos residuales!');
+  //         print('   - Access Token: ${diagnostic['hasAccessToken']}');
+  //         print('   - User Data: ${diagnostic['hasUserData']}');
+  //       }
+  //     } catch (e) {
+  //       print('⚠️ Error diagnosticando: $e');
+  //     }
+  //
+  //     // ✅ PASO 5: Esperar un momento para que se limpie todo
+  //     print('⏳ PASO 5: Esperando limpieza de datos...');
+  //     await Future.delayed(const Duration(milliseconds: 500));
+  //
+  //     // ✅ PASO 6: Navegar a Login
+  //     print('🚀 PASO 6: Navegando a LoginPage...');
+  //     if (!mounted) {
+  //       print('⚠️ Widget no está montado, cancelando navegación');
+  //       return;
+  //     }
+  //
+  //     Navigator.of(context).pushAndRemoveUntil(
+  //       MaterialPageRoute(builder: (context) => const LoginPage()),
+  //           (route) => false, // Elimina todo el stack
+  //     );
+  //
+  //     print('✅ ========== LOGOUT COMPLETADO ==========');
+  //   } catch (e) {
+  //     print('❌ ERROR CRÍTICO EN LOGOUT: $e');
+  //
+  //     // Nuclear option: forzar logout incluso si hay error
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(
+  //           content: Text('Error en logout: $e'),
+  //           backgroundColor: Colors.red,
+  //           duration: const Duration(seconds: 3),
+  //         ),
+  //       );
+  //
+  //       // Intentar navegar de todos modos
+  //       Future.delayed(const Duration(seconds: 1), () {
+  //         if (mounted) {
+  //           Navigator.of(context).pushAndRemoveUntil(
+  //             MaterialPageRoute(builder: (context) => const LoginPage()),
+  //                 (route) => false,
+  //           );
+  //         }
+  //       });
+  //     }
+  //   }
+  // }
+
+  /// ✅ MÉTODO PARA MOSTRAR CONFIRMACIÓN DE LOGOUT
+  // void _showLogoutConfirmation() {
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false, // Evita cerrar tocando afuera
+  //     builder: (BuildContext dialogContext) {
+  //       return AlertDialog(
+  //         title: const Text('Cerrar Sesión'),
+  //         content: const Text(
+  //           '¿Estás seguro de que deseas cerrar sesión? Se limpiarán todos los datos locales.',
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () {
+  //               print('❌ Usuario canceló logout');
+  //               Navigator.of(dialogContext).pop();
+  //             },
+  //             child: const Text('Cancelar'),
+  //           ),
+  //           TextButton(
+  //             onPressed: () {
+  //               print('✅ Usuario confirmó logout');
+  //               Navigator.of(dialogContext).pop();
+  //               _logout(); // Ejecutar logout después de cerrar el diálogo
+  //             },
+  //             child: const Text(
+  //               'Cerrar Sesión',
+  //               style: TextStyle(color: Colors.red),
+  //             ),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
+
+  /// ✅ MÉTODO LOGOUT FINAL Y CORRECTO (reemplaza el actual en home_page.dart)
+  Future<void> _logout() async {
+    print('🔄 ========== INICIANDO LOGOUT ==========');
+
+    try {
+      // ✅ PASO 1: Detener geolocalización
+      print('🌍 PASO 1: Deteniendo geolocalización...');
+      try {
+        _ubicacionService.detenerCapturaAutomatica();
+        print('✅ Geolocalización detenida');
+      } catch (e) {
+        print('⚠️ Error deteniendo geolocalización: $e');
+      }
+
+      // ✅ PASO 2: Detener sincronización de reportes
+      print('📊 PASO 2: Deteniendo sincronización...');
+      try {
+        _syncService.stopSync(); // Detener el timer
+        print('✅ Sincronización detenida');
+      } catch (e) {
+        print('⚠️ Error deteniendo sincronización: $e');
+      }
+
+      // ✅ PASO 3: Dispose de servicios
+      print('🧹 PASO 3: Limpiando servicios...');
+      try {
+        _syncService.dispose(); // Limpiar todo
+        print('✅ Servicios limpios');
+      } catch (e) {
+        print('⚠️ Error limpiando servicios: $e');
+      }
+
+      // ✅ PASO 4: Logout en AuthService
+      print('🔐 PASO 4: Logout en AuthService...');
+      try {
+        await _authService.logout();
+        print('✅ Logout completado en AuthService');
+      } catch (e) {
+        print('⚠️ Error en logout de AuthService: $e');
+      }
+
+      // ✅ PASO 5: Diagnosticar estado post-logout
+      print('🔍 PASO 5: Diagnosticando estado post-logout...');
+      try {
+        final diagnostic = await _authService.diagnosticarLogout();
+        print('🔍 Diagnóstico: $diagnostic');
+
+        if (diagnostic['hasAccessToken'] == true || diagnostic['hasUserData'] == true) {
+          print('⚠️ ADVERTENCIA: Aún hay datos residuales!');
+          print('   - Access Token: ${diagnostic['hasAccessToken']}');
+          print('   - User Data: ${diagnostic['hasUserData']}');
+        } else {
+          print('✅ Todos los datos fueron eliminados correctamente');
+        }
+      } catch (e) {
+        print('⚠️ Error diagnosticando: $e');
+      }
+
+      // ✅ PASO 6: Esperar limpieza
+      print('⏳ PASO 6: Esperando limpieza de datos...');
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // ✅ PASO 7: Navegar a Login
+      print('🚀 PASO 7: Navegando a LoginPage...');
+      if (!mounted) {
+        print('⚠️ Widget no está montado, cancelando navegación');
+        return;
+      }
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+            (route) => false, // Elimina todo el stack de navegación
+      );
+
+      print('✅ ========== LOGOUT COMPLETADO ==========');
+    } catch (e) {
+      print('❌ ERROR CRÍTICO EN LOGOUT: $e');
+
+      // Nuclear option: forzar logout incluso si hay error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error en logout: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // Intentar navegar de todos modos
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const LoginPage()),
+                  (route) => false,
+            );
+          }
+        });
+      }
+    }
+  }
+
+  /// ✅ MÉTODO PARA MOSTRAR CONFIRMACIÓN DE LOGOUT
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Evita cerrar tocando afuera
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Cerrar Sesión'),
+          content: const Text(
+            '¿Estás seguro de que deseas cerrar sesión? Se limpiarán todos los datos locales.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                print('❌ Usuario canceló logout');
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                print('✅ Usuario confirmó logout');
+                Navigator.of(dialogContext).pop();
+                _logout(); // Ejecutar logout después de cerrar el diálogo
+              },
+              child: const Text(
+                'Cerrar Sesión',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
