@@ -376,7 +376,7 @@ class DatabaseService {
         'sincronizar': registro.sincronizar ? 1 : 0,
         'descripcion_reporte': registro.descripcionReporte,
         'incidencias': registro.incidencias ?? 'Ubicación capturada',
-        'centro_empadronamiento_id': registro.centroEmpadronamiento,
+        'centro_empadronamiento_id': registro.centroEmpadronamientoId,
         'sincronizado': 0,
         'fecha_sincronizacion': null,
         'id_servidor': null,

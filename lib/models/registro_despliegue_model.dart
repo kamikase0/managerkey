@@ -12,7 +12,7 @@ class RegistroDespliegue {
   final bool sincronizar;
   final String? descripcionReporte;
   final String? incidencias;
-  final int? centroEmpadronamiento;
+  final int? centroEmpadronamientoId;
   final int sincronizado;
   final String? fechaSincronizacion;
   final int? idServidor;
@@ -33,7 +33,7 @@ class RegistroDespliegue {
     required this.sincronizar,
     this.descripcionReporte,
     this.incidencias,
-    this.centroEmpadronamiento,
+    this.centroEmpadronamientoId,
     required this.sincronizado,
     this.fechaSincronizacion,
     this.idServidor,
@@ -57,7 +57,7 @@ class RegistroDespliegue {
       'sincronizar': sincronizar ? 1 : 0,
       'descripcion_reporte': descripcionReporte,
       'incidencias': incidencias,
-      'centro_empadronamiento_id': centroEmpadronamiento,
+      'centro_empadronamiento_id': centroEmpadronamientoId,
       'sincronizado': sincronizado,
       'fecha_sincronizacion': fechaSincronizacion,
       'id_servidor': idServidor,
@@ -82,7 +82,7 @@ class RegistroDespliegue {
       sincronizar: (map['sincronizar'] as int?) == 1,
       descripcionReporte: map['descripcion_reporte'] as String?,
       incidencias: map['incidencias'] as String?,
-      centroEmpadronamiento: map['centro_empadronamiento_id'] as int?,
+      centroEmpadronamientoId: map['centro_empadronamiento_id'] as int?,
       sincronizado: map['sincronizado'] as int,
       fechaSincronizacion: map['fecha_sincronizacion'] as String?,
       idServidor: map['id_servidor'] as int?,
@@ -100,7 +100,7 @@ class RegistroDespliegue {
     print('🔄 Creando mapa para API (ID Local: $id)...');
 
     final mapa = {
-      'fechaHora': fechaHora, // ✅ NUNCA NULL
+      'fecha_hora': fechaHora, // ✅ NUNCA NULL
       'operadorId': operadorId,
       'estado': estado,
       'latitud': latitud,
@@ -108,18 +108,18 @@ class RegistroDespliegue {
       'observaciones': observaciones ?? '',
       'sincronizar': sincronizar ? 1 : 0,
       'incidencias': incidencias ?? 'Ubicación capturada',
-      'centroEmpadronamiento': centroEmpadronamiento, // ✅ NUNCA NULL
+      'centro_empadronamiento': centroEmpadronamientoId, // ✅ NUNCA NULL
     };
 
     // ✅ Campos opcionales - solo incluir si tienen valor
     if (descripcionReporte != null) {
-      mapa['descripcionReporte'] = descripcionReporte;
+      mapa['descripcion_reporte'] = descripcionReporte;
     }
     if (fechaSincronizacion != null) {
-      mapa['fechaSincronizacion'] = fechaSincronizacion;
+      mapa['fecha_sincronizacion'] = fechaSincronizacion;
     }
     if (idServidor != null) {
-      mapa['idServidor'] = idServidor;
+      mapa['id_servidor'] = idServidor;
     }
     if (createdAt != null) {
       mapa['createdAt'] = createdAt;
@@ -161,7 +161,7 @@ class RegistroDespliegue {
       sincronizar: sincronizarBool,
       descripcionReporte: map['descripcionReporte'] as String?,
       incidencias: map['incidencias'] as String?,
-      centroEmpadronamiento: map['centroEmpadronamiento'] as int?,
+      centroEmpadronamientoId: map['centroEmpadronamiento'] as int?,
       sincronizado: map['sincronizado'] as int? ?? 0,
       fechaSincronizacion: map['fechaSincronizacion'] as String?,
       idServidor: map['idServidor'] as int?,
@@ -206,7 +206,7 @@ class RegistroDespliegue {
       sincronizar: sincronizar,
       descripcionReporte: descripcionReporte,
       incidencias: incidencias ?? 'Ubicación capturada',
-      centroEmpadronamiento: centroEmpadronamiento,
+      centroEmpadronamientoId: centroEmpadronamiento,
       sincronizado: 0,
       fechaSincronizacion: null,
       idServidor: null,
@@ -251,7 +251,7 @@ class RegistroDespliegue {
       sincronizar: sincronizar ?? this.sincronizar,
       descripcionReporte: descripcionReporte ?? this.descripcionReporte,
       incidencias: incidencias ?? this.incidencias,
-      centroEmpadronamiento: centroEmpadronamiento ?? this.centroEmpadronamiento,
+      centroEmpadronamientoId: centroEmpadronamiento ?? this.centroEmpadronamientoId,
       sincronizado: sincronizado ?? this.sincronizado,
       fechaSincronizacion: fechaSincronizacion ?? this.fechaSincronizacion,
       idServidor: idServidor ?? this.idServidor,
@@ -265,7 +265,7 @@ class RegistroDespliegue {
 
   @override
   String toString() {
-    return 'RegistroDespliegue(id: $id, estado: $estado, operadorId: $operadorId, fechaHora: $fechaHora, centroEmpadronamiento: $centroEmpadronamiento, sincronizado: $sincronizado)';
+    return 'RegistroDespliegue(id: $id, estado: $estado, operadorId: $operadorId, fechaHora: $fechaHora, centroEmpadronamiento: $centroEmpadronamientoId, sincronizado: $sincronizado)';
   }
 
   // Método para verificar si es igual a otro registro
@@ -275,15 +275,15 @@ class RegistroDespliegue {
         estado == other.estado &&
         latitud == other.latitud &&
         longitud == other.longitud &&
-        centroEmpadronamiento == other.centroEmpadronamiento;
+        centroEmpadronamientoId == other.centroEmpadronamientoId;
   }
 
   // ✅ NUEVO: Método para validar que el registro esté completo
   bool isValid() {
     return fechaHora.isNotEmpty &&
         operadorId > 0 &&
-        centroEmpadronamiento != null &&
-        centroEmpadronamiento! > 0 &&
+        centroEmpadronamientoId != null &&
+        centroEmpadronamientoId! > 0 &&
         latitud.isNotEmpty &&
         longitud.isNotEmpty;
   }
@@ -294,7 +294,7 @@ class RegistroDespliegue {
 
     if (fechaHora.isEmpty) errors.add('fechaHora está vacío');
     if (operadorId <= 0) errors.add('operadorId inválido');
-    if (centroEmpadronamiento == null || centroEmpadronamiento! <= 0) {
+    if (centroEmpadronamientoId == null || centroEmpadronamientoId! <= 0) {
       errors.add('centroEmpadronamiento está vacío o es 0');
     }
     if (latitud.isEmpty) errors.add('latitud está vacío');

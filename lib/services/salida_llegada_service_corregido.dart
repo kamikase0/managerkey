@@ -191,7 +191,7 @@ class SalidaLlegadaService {
             'observaciones': registro.observaciones ?? '',
             'sincronizar': 1,
             'incidencias': registro.incidencias ?? 'Ubicación capturada',
-            'centroEmpadronamiento': registro.centroEmpadronamiento,
+            'centroEmpadronamiento': registro.centroEmpadronamientoId,
           };
 
           // Enviar al servidor
@@ -296,8 +296,7 @@ class SalidaLlegadaService {
       }
 
       if (datosCorregidos.containsKey('centroEmpadronamiento')) {
-        datosCorregidos['centro_empadronamiento_id'] = datosCorregidos['centroEmpadronamiento'];
-        datosCorregidos.remove('centroEmpadronamiento');
+        datosCorregidos['centro_empadronamiento'] = datosCorregidos.remove('centroEmpadronamiento');
       }
 
       if (datosCorregidos.containsKey('fechaHora')) {
