@@ -212,79 +212,6 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     }
   }
 
-  // Método registrar llegada con manejo de offline/online
-  // Future<void> _registrarLlegada() async {
-  //   if (_provinciaSeleccionada == null || _puntoEmpadronamientoId == null) {
-  //     AlertHelper.showError(
-  //       context: context,
-  //       title: 'Datos Incompletos',
-  //       text: 'Debe seleccionar una provincia y un punto de empadronamiento.',
-  //     );
-  //     return;
-  //   }
-  //
-  //   setState(() => _isLoading = true);
-  //   AlertHelper.showLoading(context: context, text: 'Registrando llegada...');
-  //
-  //   try {
-  //     bool ubicacionCapturada = false;
-  //     if (_gpsActivado) {
-  //       ubicacionCapturada = await _capturarGeolocalizacion();
-  //     }
-  //
-  //     // Usar el servicio de salida/llegada con estado 'LLEGADA'
-  //     final resultado = await _salidaLlegadaService.registrarLlegadaConEmpadronamiento(
-  //       observaciones: _observacionesController.text,
-  //       idOperador: widget.idOperador,
-  //       sincronizarConServidor: true, // Siempre intentar sincronizar
-  //       puntoEmpadronamientoId: _puntoEmpadronamientoId!,
-  //       latitud: _latitud,
-  //       longitud: _longitud,
-  //     );
-  //
-  //     if (mounted) AlertHelper.closeLoading(context);
-  //
-  //     if (resultado['exitoso']) {
-  //       // Mostrar mensaje según si se sincronizó o no
-  //       if (resultado['sincronizado'] == true) {
-  //         AlertHelper.showSuccess(
-  //           context: context,
-  //           title: '✅ ¡Llegada Registrada!',
-  //           text: '${resultado['mensaje']}\n\nLos datos se han guardado en registros_despliegue y sincronizado con el servidor.',
-  //         );
-  //       } else {
-  //         AlertHelper.showInfo(
-  //           context: context,
-  //           title: '📱 ¡Llegada Guardada!',
-  //           text: '${resultado["mensaje"]}\n\nLos datos se guardaron en registros_despliegue y se sincronizarán automáticamente cuando haya conexión.',
-  //         );
-  //       }
-  //
-  //       _limpiarFormulario();
-  //
-  //     } else {
-  //       AlertHelper.showError(
-  //         context: context,
-  //         title: 'Registro Fallido',
-  //         text: resultado['mensaje'],
-  //       );
-  //     }
-  //   } catch (e) {
-  //     if (mounted) AlertHelper.closeLoading(context);
-  //
-  //     print('❌ Error al registrar llegada: $e');
-  //     AlertHelper.showError(
-  //       context: context,
-  //       title: 'Error Inesperado',
-  //       text: 'Ocurrió un error al registrar la llegada: ${e.toString()}',
-  //     );
-  //   } finally {
-  //     if (mounted) {
-  //       setState(() => _isLoading = false);
-  //     }
-  //   }
-  // }
-
   Widget _buildGPSInfo() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -852,8 +779,11 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     }
   }
 
-  // Método registrar llegada con manejo de offline/online
+// En lib/views/operador/llegada_ruta_view.dart
+// ... dentro de la clase _LlegadaRutaViewState
+
   Future<void> _registrarLlegada() async {
+    // 1. Validación de datos de la UI
     if (_provinciaSeleccionada == null || _puntoEmpadronamientoId == null) {
       AlertHelper.showError(
         context: context,
@@ -864,84 +794,81 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     }
 
     setState(() => _isLoading = true);
+    // 2. Mostrar alerta de carga
     AlertHelper.showLoading(context: context, text: 'Registrando llegada...');
 
-    // --- INICIO DE LA CORRECCIÓN ---
-
-    // 1. Siempre intentar capturar la ubicación antes de registrar.
-    if (_gpsActivado) {
-      print('🛰️ GPS activado. Intentando capturar ubicación antes de registrar...');
-      await _capturarGeolocalizacion(); // Usar await para asegurar que esperamos la captura.
-    } else {
-      print('⚠️ GPS desactivado. Las coordenadas serán nulas.');
-      // Asegurarse de que las coordenadas estén explícitamente en null.
-      setState(() {
-        _latitud = null;
-        _longitud = null;
-      });
-    }
-
-    // 2. Comprobar si los datos obligatorios (coordenadas) están disponibles SI el GPS está activado.
-    if (_gpsActivado && (_latitud == null || _longitud == null)) {
-      if (mounted) AlertHelper.closeLoading(context);
-      AlertHelper.showError(
-        context: context,
-        title: 'Ubicación no capturada',
-        text: 'No se pudo capturar la geolocalización. Inténtelo de nuevo.',
-      );
-      setState(() => _isLoading = false);
-      return; // Detener el proceso si no se pudo capturar la ubicación con el GPS activado.
-    }
-
-    // --- FIN DE LA CORRECCIÓN ---
-
-
     try {
-      // Usar el servicio de salida/llegada con estado 'LLEGADA'
+      // 3. Capturar geolocalización si el GPS está activo
+      if (_gpsActivado) {
+        bool ubicacionCapturada = await _capturarGeolocalizacion();
+        if (!ubicacionCapturada && mounted) {
+          AlertHelper.closeLoading(context);
+          AlertHelper.showError(
+              context: context,
+              title: 'Ubicación no capturada',
+              text: 'No se pudo obtener la geolocalización. Por favor, inténtelo de nuevo.');
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
+      // 4. Llamar al servicio para registrar la llegada
       final resultado = await _salidaLlegadaService.registrarLlegadaConEmpadronamiento(
         observaciones: _observacionesController.text,
         idOperador: widget.idOperador,
-        sincronizarConServidor: true, // Siempre intentar sincronizar
+        sincronizarConServidor: true,
         puntoEmpadronamientoId: _puntoEmpadronamientoId!,
         latitud: _latitud,
         longitud: _longitud,
       );
 
-      if (mounted) AlertHelper.closeLoading(context);
+      if (!mounted) return;
 
+      AlertHelper.closeLoading(context);
+
+      // 5. Mostrar resultado al usuario usando tus alertas
       if (resultado['exitoso']) {
-        // Mostrar mensaje según si se sincronizó o no
-        if (resultado['sincronizado'] == true) {
+        final bool esSincronizado = resultado['sincronizado'] == true;
+
+        if (esSincronizado) {
+          // Caso ONLINE: Éxito y sincronizado
           AlertHelper.showSuccess(
             context: context,
-            title: '✅ ¡Llegada Registrada!',
-            text: '${resultado['mensaje']}\n\nLos datos se han guardado y sincronizado con el servidor.',
+            title: '¡Llegada Registrada!',
+            text: 'Los datos se guardaron y sincronizaron con el servidor.',
+            onConfirm: () {
+              _limpiarFormulario();
+              setState(() {});
+            },
           );
         } else {
+          // Caso OFFLINE: Guardado localmente
           AlertHelper.showInfo(
             context: context,
-            title: '📱 ¡Llegada Guardada!',
-            text: '${resultado["mensaje"]}\n\nLos datos se guardaron localmente y se sincronizarán automáticamente.',
+            title: '¡Llegada Guardada!',
+            text: 'Registro guardado localmente. Se sincronizará cuando haya conexión.',
+            onConfirm: () {
+              _limpiarFormulario();
+              setState(() {});
+            },
           );
         }
-
-        _limpiarFormulario();
-
       } else {
+        // Caso de error devuelto por el servicio
         AlertHelper.showError(
           context: context,
           title: 'Registro Fallido',
-          text: resultado['mensaje'],
+          text: resultado['mensaje'] ?? 'Ocurrió un error desconocido.',
         );
       }
     } catch (e) {
-      if (mounted) AlertHelper.closeLoading(context);
-
+      if (!mounted) return;
+      AlertHelper.closeLoading(context);
       print('❌ Error al registrar llegada: $e');
       AlertHelper.showError(
         context: context,
         title: 'Error Inesperado',
-        text: 'Ocurrió un error al registrar la llegada: ${e.toString()}',
+        text: 'Ocurrió un error grave al procesar la llegada: ${e.toString()}',
       );
     } finally {
       if (mounted) {
@@ -949,4 +876,5 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
       }
     }
   }
+
 }

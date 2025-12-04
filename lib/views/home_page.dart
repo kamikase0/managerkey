@@ -8,6 +8,7 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/reporte_sync_service.dart';
 import '../services/api_service.dart';
+import '../services/ubicacion_service.dart';
 import '../widgets/sidebar.dart';
 import '../utils/alert_helper.dart';
 import 'operador_view.dart';
@@ -31,6 +32,7 @@ class _HomePageState extends State<HomePage> {
   User? _currentUser;
   late ReporteSyncService _syncService;
   late AuthService _authService;
+  late UbicacionService _ubicacionService;
   late ApiService? _apiService;
 
   // ✅ CORREGIDO: Stream único que no se recrea
@@ -41,8 +43,30 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _syncService = Provider.of<ReporteSyncService>(context, listen: false);
     _authService = Provider.of<AuthService>(context, listen: false);
+    _ubicacionService = Provider.of<UbicacionService>(context, listen: false);
+
     _loadUserData();
     _initializeSyncService();
+    _initializeUbicacionService();
+  }
+
+  /// ✅ NUEVO: Inicializar servicio de ubicaciones
+  Future<void> _initializeUbicacionService() async {
+    try {
+      print('🌍 Inicializando servicio de ubicaciones...');
+
+      // Registrar ubicación inmediatamente
+      await _ubicacionService.registrarUbicacion();
+
+      // Iniciar captura automática cada 2 minutos
+      _ubicacionService.iniciarCapturaAutomatica(
+        intervalo: const Duration(minutes: 2),
+      );
+
+      print('✅ Servicio de ubicaciones inicializado correctamente');
+    } catch (e) {
+      print('❌ Error inicializando servicio de ubicaciones: $e');
+    }
   }
 
   /// ✅ CORREGIDO: Inicializar el stream una sola vez
@@ -137,13 +161,63 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// ✅ CORREGIDO: Logout
+  /// ✅ CORREGIDO: Logout - Detener servicios
   Future<void> _logout() async {
-    await _authService.logout();
+    // ✅ PASO 1: Detener el servicio de ubicaciones
+    try {
+      print('🌍 Deteniendo servicio de geolocalización...');
+      _ubicacionService.detenerCapturaAutomatica();
+      print('✅ Servicio de geolocalización detenido.');
+    } catch (e) {
+      print('❌ Error al detener el servicio de geolocalización: $e');
+    }
+
+    // ✅ PASO 2: Logout del servicio de autenticación
+    try {
+      await _authService.logout();
+      print('✅ Sesión cerrada correctamente');
+    } catch (e) {
+      print('❌ Error al cerrar sesión: $e');
+    }
+
+    // ✅ PASO 3: Navegar a login
     widget.onLogout();
   }
 
-  /// ✅ CORREGIDO: Sincronización manual
+  /// ✅ NUEVO: Sincronizar ubicaciones pendientes manualmente
+  Future<void> _sincronizarUbicacionesManualmente() async {
+    if (!mounted) {
+      print('⚠️ Widget desmontado, cancelando sincronización');
+      return;
+    }
+
+    try {
+      print('📍 Sincronizando ubicaciones pendientes...');
+      await _ubicacionService.sincronizarUbicacionesPendientes();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Ubicaciones sincronizadas correctamente'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// ✅ CORREGIDO: Sincronización manual de reportes
   Future<void> _manualSync() async {
     if (!mounted) {
       print('⚠️ Widget desmontado, cancelando sincronización manual');
@@ -540,6 +614,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    print('🧹 Limpiando HomePage...');
+    _ubicacionService.detenerCapturaAutomatica();
     _syncService.dispose();
     super.dispose();
   }

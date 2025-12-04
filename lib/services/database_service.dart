@@ -1,4 +1,3 @@
-// lib/services/database_service.dart - VERSIÓN CORREGIDA Y UNIFICADA
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
@@ -18,26 +17,38 @@ class DatabaseService {
 
   DatabaseService._internal();
 
-  /// Obtener instancia de base de datos
+  /// ✅ CORRECCIÓN: Obtener instancia de base de datos (getter)
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    if (_database != null) {
+      return _database!;
+    }
     _database = await _initializeDatabase();
     return _database!;
   }
 
-  /// Inicializar base de datos
-  Future<Database> _initializeDatabase() async {
-    final databasesPath = await getDatabasesPath();
-    final path = join(databasesPath, 'app_database.db');
+  /// ✅ CORRECCIÓN: Inicializar base de datos (solo una vez)
+  Future<void> initializeDatabase() async {
+    if (_database != null) {
+      print("🗄️ La base de datos ya está inicializada.");
+      return;
+    }
+    _database = await _initializeDatabase();
+    print("✅ Base de datos local inicializada correctamente desde main.");
+  }
 
-    return await openDatabase(
+  /// Inicializar base de datos (método privado)
+  Future<Database> _initializeDatabase() async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, 'manager_key.db');
+
+    print('📁 Ruta de BD: $path');
+
+    return openDatabase(
       path,
-      version: 10, // Incrementado para forzar migración
+      version: 10,
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
-      onConfigure: (db) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-      },
+      onDowngrade: onDatabaseDowngradeDelete,
     );
   }
 
@@ -55,13 +66,12 @@ class DatabaseService {
 
   /// Migrar base de datos
   Future<void> _upgradeDatabase(
-    Database db,
-    int oldVersion,
-    int newVersion,
-  ) async {
+      Database db,
+      int oldVersion,
+      int newVersion,
+      ) async {
     print('🔄 Migrando BD de versión $oldVersion a $newVersion...');
 
-    // Migración paso a paso
     for (int version = oldVersion + 1; version <= newVersion; version++) {
       switch (version) {
         case 2:
@@ -101,7 +111,6 @@ class DatabaseService {
   /// MÉTODOS DE CREACIÓN DE TABLAS
   /// ===================================================================
 
-  /// Crear tabla registros_despliegue (estructura similar al servidor)
   Future<void> _createTableRegistrosDespliegue(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS registros_despliegue (
@@ -127,7 +136,6 @@ class DatabaseService {
       )
     ''');
 
-    // Crear índices para mejor rendimiento
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_registros_operador ON registros_despliegue(operador_id)',
     );
@@ -141,7 +149,6 @@ class DatabaseService {
     print('✅ Tabla registros_despliegue creada');
   }
 
-  /// Crear tabla reportes_diarios
   Future<void> _createTableReportesDiarios(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS reportes_diarios (
@@ -174,7 +181,6 @@ class DatabaseService {
     print('✅ Tabla reportes_diarios creada');
   }
 
-  /// Crear tabla reportes_pendientes
   Future<void> _createTableReportesPendientes(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS reportes_pendientes (
@@ -190,7 +196,6 @@ class DatabaseService {
     print('✅ Tabla reportes_pendientes creada');
   }
 
-  /// Crear tabla ubicaciones
   Future<void> _createTableUbicaciones(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ubicaciones (
@@ -214,7 +219,6 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion2(Database db) async {
     print('🔧 Migrando a versión 2: Agregar campos de sincronización');
-
     try {
       await db.execute(
         'ALTER TABLE registros_despliegue ADD COLUMN fecha_sincronizacion TEXT',
@@ -230,7 +234,6 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion3(Database db) async {
     print('🔧 Migrando a versión 3: Agregar centro_empadronamiento_id');
-
     try {
       await db.execute(
         'ALTER TABLE registros_despliegue ADD COLUMN centro_empadronamiento_id INTEGER',
@@ -246,7 +249,6 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion4(Database db) async {
     print('🔧 Migrando a versión 4: Agregar campos de intentos');
-
     try {
       await db.execute(
         'ALTER TABLE registros_despliegue ADD COLUMN intentos INTEGER DEFAULT 0',
@@ -262,9 +264,7 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion5(Database db) async {
     print('🔧 Migrando a versión 5: Normalizar nombres de columnas');
-
     try {
-      // Renombrar columnas camelCase a snake_case si existen
       final columns = await db.rawQuery(
         'PRAGMA table_info(registros_despliegue)',
       );
@@ -294,7 +294,6 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion6(Database db) async {
     print('🔧 Migrando a versión 6: Actualizar reportes_diarios');
-
     try {
       await db.execute(
         'ALTER TABLE reportes_diarios ADD COLUMN fecha_creacion_local TEXT',
@@ -313,7 +312,6 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion7(Database db) async {
     print('🔧 Migrando a versión 7: Crear índices para mejor rendimiento');
-
     try {
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_registros_estado ON registros_despliegue(estado)',
@@ -329,9 +327,7 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion8(Database db) async {
     print('🔧 Migrando a versión 8: Limpiar y optimizar');
-
     try {
-      // Eliminar registros duplicados (si existen)
       await db.execute('''
         DELETE FROM registros_despliegue 
         WHERE id NOT IN (
@@ -348,9 +344,7 @@ class DatabaseService {
 
   Future<void> _upgradeToVersion9(Database db) async {
     print('🔧 Migrando a versión 9: Asegurar campos requeridos');
-
     try {
-      // Asegurar que campos críticos tengan valores por defecto
       await db.execute(
         'UPDATE registros_despliegue SET fecha_creacion_local = datetime() WHERE fecha_creacion_local IS NULL',
       );
@@ -367,15 +361,11 @@ class DatabaseService {
   /// MÉTODOS CRUD PARA REGISTROS_DESPLIEGUE
   /// ===================================================================
 
-  /// Insertar un registro de despliegue
   Future<int> insertRegistroDespliegue(RegistroDespliegue registro) async {
     try {
       final db = await database;
-
-      // Verificar estructura primero
       await verificarYRepararEstructura();
 
-      // Usar nombres snake_case consistentes
       final datos = {
         'fecha_hora': registro.fechaHora,
         'operador_id': registro.operadorId,
@@ -397,10 +387,6 @@ class DatabaseService {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      // Eliminar campos camelCase si existen
-      datos.remove('operadorId');
-      datos.remove('centroEmpadronamiento');
-
       final id = await db.insert(
         'registros_despliegue',
         datos,
@@ -408,25 +394,13 @@ class DatabaseService {
       );
 
       print('✅ Registro de despliegue insertado con ID: $id');
-      print('📋 Datos insertados: $datos');
-
       return id;
     } catch (e) {
       print('❌ Error insertando registro de despliegue: $e');
-
-      // Intentar reparar y reintentar
-      try {
-        final db = await database;
-        await verificarYRepararEstructura();
-        return await insertRegistroDespliegue(registro); // Reintentar
-      } catch (e2) {
-        print('❌ Error en reintento: $e2');
-        return -1;
-      }
+      return -1;
     }
   }
 
-  /// Obtener registros pendientes de sincronización
   Future<List<RegistroDespliegue>> obtenerRegistrosPendientes() async {
     try {
       final db = await database;
@@ -444,7 +418,6 @@ class DatabaseService {
     }
   }
 
-  /// Marcar registro como sincronizado
   Future<void> marcarComoSincronizado(int id, {int? idServidor}) async {
     try {
       final db = await database;
@@ -465,7 +438,6 @@ class DatabaseService {
     }
   }
 
-  /// Incrementar intentos fallidos
   Future<void> incrementarIntentosFallidos(int id) async {
     try {
       final db = await database;
@@ -479,7 +451,6 @@ class DatabaseService {
     }
   }
 
-  /// Obtener estadísticas de sincronización
   Future<Map<String, dynamic>> obtenerEstadisticasDespliegue() async {
     try {
       final db = await database;
@@ -530,20 +501,19 @@ class DatabaseService {
   /// MÉTODOS PARA REPORTES_DIARIOS
   /// ===================================================================
 
-  /// Insertar reporte diario
   Future<int> insertReporteDiario(Map<String, dynamic> reporteData) async {
     try {
       final db = await database;
 
       final datos = {
         'fecha_reporte':
-            reporteData['fecha_reporte'] ?? DateTime.now().toIso8601String(),
+        reporteData['fecha_reporte'] ?? DateTime.now().toIso8601String(),
         'contador_inicial_c':
-            reporteData['contador_inicial_c'] ?? 'C-00000-0000-0',
+        reporteData['contador_inicial_c'] ?? 'C-00000-0000-0',
         'contador_final_c': reporteData['contador_final_c'] ?? 'C-00000-0000-0',
         'registro_c': reporteData['registro_c'] ?? 0,
         'contador_inicial_r':
-            reporteData['contador_inicial_r'] ?? 'R-00000-0000-0',
+        reporteData['contador_inicial_r'] ?? 'R-00000-0000-0',
         'contador_final_r': reporteData['contador_final_r'] ?? 'R-00000-0000-0',
         'registro_r': reporteData['registro_r'] ?? 0,
         'incidencias': reporteData['incidencias'] ?? '',
@@ -552,7 +522,7 @@ class DatabaseService {
         'estacion': reporteData['estacion'] ?? 0,
         'centro_empadronamiento_id': reporteData['centro_empadronamiento_id'],
         'estado': reporteData['estado'] ?? 'ENVIO REPORTE',
-        'sincronizar': reporteData['sincronizar'] ?? true ? 1 : 0,
+        'sincronizar': (reporteData['sincronizar'] ?? true) ? 1 : 0,
         'synced': 0,
         'observacionC': reporteData['observacionC'] ?? '',
         'observacionR': reporteData['observacionR'] ?? '',
@@ -573,7 +543,6 @@ class DatabaseService {
     }
   }
 
-  /// Obtener reportes no sincronizados
   Future<List<Map<String, dynamic>>> obtenerReportesNoSincronizados() async {
     try {
       final db = await database;
@@ -589,7 +558,6 @@ class DatabaseService {
     }
   }
 
-  /// Marcar reporte como sincronizado
   Future<void> marcarReporteComoEnviado(int id) async {
     try {
       final db = await database;
@@ -609,7 +577,6 @@ class DatabaseService {
   /// MÉTODOS GENERALES
   /// ===================================================================
 
-  /// Insertar datos genéricos
   Future<int> insert(String table, Map<String, dynamic> values) async {
     try {
       final db = await database;
@@ -624,13 +591,12 @@ class DatabaseService {
     }
   }
 
-  /// Actualizar datos
   Future<int> update(
-    String table,
-    Map<String, dynamic> values,
-    String where,
-    List<dynamic> whereArgs,
-  ) async {
+      String table,
+      Map<String, dynamic> values,
+      String where,
+      List<dynamic> whereArgs,
+      ) async {
     try {
       final db = await database;
       return await db.update(table, values, where: where, whereArgs: whereArgs);
@@ -640,12 +606,11 @@ class DatabaseService {
     }
   }
 
-  /// Eliminar datos
   Future<int> delete(
-    String table,
-    String where,
-    List<dynamic> whereArgs,
-  ) async {
+      String table,
+      String where,
+      List<dynamic> whereArgs,
+      ) async {
     try {
       final db = await database;
       return await db.delete(table, where: where, whereArgs: whereArgs);
@@ -655,11 +620,10 @@ class DatabaseService {
     }
   }
 
-  /// Consulta SQL directa
   Future<List<Map<String, dynamic>>> rawQuery(
-    String sql, [
-    List<dynamic>? args,
-  ]) async {
+      String sql, [
+        List<dynamic>? args,
+      ]) async {
     try {
       final db = await database;
       return await db.rawQuery(sql, args);
@@ -673,7 +637,6 @@ class DatabaseService {
   /// MÉTODOS DE MANTENIMIENTO
   /// ===================================================================
 
-  /// Asegurar que todas las tablas existan
   Future<void> ensureTablesCreated() async {
     try {
       final db = await database;
@@ -690,7 +653,6 @@ class DatabaseService {
     }
   }
 
-  /// Limpiar datos antiguos
   Future<void> limpiarDatosAntiguos({int dias = 30}) async {
     try {
       final db = await database;
@@ -698,14 +660,12 @@ class DatabaseService {
           .subtract(Duration(days: dias))
           .toIso8601String();
 
-      // Limpiar registros sincronizados antiguos
       final registrosEliminados = await db.delete(
         'registros_despliegue',
         where: 'sincronizado = ? AND fecha_creacion_local < ?',
         whereArgs: [1, fechaLimite],
       );
 
-      // Limpiar reportes sincronizados antiguos
       final reportesEliminados = await db.delete(
         'reportes_diarios',
         where: 'synced = ? AND fecha_creacion_local < ?',
@@ -720,7 +680,6 @@ class DatabaseService {
     }
   }
 
-  /// Exportar base de datos (para debug)
   Future<Map<String, dynamic>> exportarParaDebug() async {
     try {
       final db = await database;
@@ -743,13 +702,10 @@ class DatabaseService {
     }
   }
 
-  /// Método equivalente a obtenerEstadisticasDespliegueOffline
   Future<Map<String, dynamic>> obtenerEstadisticasDespliegueOffline() async {
-    // Usar el método existente con nombre diferente
     return await obtenerEstadisticasDespliegue();
   }
 
-  /// Método equivalente a obtenerNoSincronizados
   Future<List<RegistroDespliegue>> obtenerNoSincronizados() async {
     try {
       final db = await database;
@@ -766,21 +722,18 @@ class DatabaseService {
     }
   }
 
-  /// Método equivalente a obtenerRegistrosDesplieguePendientes
   Future<List<RegistroDespliegue>>
   obtenerRegistrosDesplieguePendientes() async {
-    // Usar el método existente
     return await obtenerRegistrosPendientes();
   }
 
-  /// Método para obtener llegadas pendientes (estado = "LLEGADA")
   Future<List<RegistroDespliegue>> obtenerLlegadasPendientes() async {
     try {
       final db = await database;
       final List<Map<String, dynamic>> maps = await db.query(
         'registros_despliegue',
         where:
-            'estado = ? AND sincronizar = ? AND sincronizado = ? AND intentos < 3',
+        'estado = ? AND sincronizar = ? AND sincronizado = ? AND intentos < 3',
         whereArgs: ['LLEGADA', 1, 0],
         orderBy: 'fecha_creacion_local ASC',
       );
@@ -791,14 +744,13 @@ class DatabaseService {
     }
   }
 
-  /// Método para obtener salidas pendientes (estado = "SALIDA")
   Future<List<RegistroDespliegue>> obtenerSalidasPendientes() async {
     try {
       final db = await database;
       final List<Map<String, dynamic>> maps = await db.query(
         'registros_despliegue',
         where:
-            'estado = ? AND sincronizar = ? AND sincronizado = ? AND intentos < 3',
+        'estado = ? AND sincronizar = ? AND sincronizado = ? AND intentos < 3',
         whereArgs: ['SALIDA', 1, 0],
         orderBy: 'fecha_creacion_local ASC',
       );
@@ -809,7 +761,6 @@ class DatabaseService {
     }
   }
 
-  /// Método para obtener registros sincronizados
   Future<List<RegistroDespliegue>>
   obtenerRegistrosDespliegueSincronizados() async {
     try {
@@ -827,7 +778,6 @@ class DatabaseService {
     }
   }
 
-  /// Verificar y reparar estructura de la base de datos
   Future<void> verificarYRepararEstructura() async {
     try {
       final db = await database;
@@ -837,7 +787,6 @@ class DatabaseService {
     }
   }
 
-  /// Diagnosticar tabla registros
   Future<Map<String, dynamic>> diagnosticarTablaRegistros() async {
     try {
       final db = await database;
@@ -864,7 +813,6 @@ class DatabaseService {
     }
   }
 
-  /// Reparar nombres de columnas
   Future<void> _repararColumnasRegistrosDespliegue(Database db) async {
     print('🔧 Reparando nombres de columnas en registros_despliegue...');
 
@@ -890,21 +838,14 @@ class DatabaseService {
     }
   }
 
-  /// Migración forzada V10 (versión que recibe Database como parámetro)
   Future<void> _migracionForzadaV10(Database db) async {
     print('🔧 Migración forzada V10: Recrear tabla registros_despliegue');
 
     try {
-      // 1. Crear tabla temporal
       await db.execute('CREATE TABLE IF NOT EXISTS registros_despliegue_temp AS SELECT * FROM registros_despliegue');
-
-      // 2. Eliminar tabla original
       await db.execute('DROP TABLE IF EXISTS registros_despliegue');
-
-      // 3. Crear tabla con estructura correcta
       await _createTableRegistrosDespliegue(db);
 
-      // 4. Copiar datos de vuelta
       await db.execute('''
       INSERT INTO registros_despliegue (
         id, fecha_hora, operador_id, estado, latitud, longitud, 
@@ -931,7 +872,6 @@ class DatabaseService {
       FROM registros_despliegue_temp
     ''');
 
-      // 5. Eliminar tabla temporal
       await db.execute('DROP TABLE IF EXISTS registros_despliegue_temp');
 
       print('✅ Migración forzada V10 completada');
@@ -942,9 +882,6 @@ class DatabaseService {
     }
   }
 
-
-  /// Migración forzada V10
-  /// Migración forzada V10
   Future<void> migracionForzadaV10() async {
     print('🔧 Migración forzada V10: Recrear tabla registros_despliegue');
 
@@ -952,16 +889,10 @@ class DatabaseService {
     try {
       db = await database;
 
-      // 1. Crear tabla temporal
       await db.execute('CREATE TABLE IF NOT EXISTS registros_despliegue_temp AS SELECT * FROM registros_despliegue');
-
-      // 2. Eliminar tabla original
       await db.execute('DROP TABLE IF EXISTS registros_despliegue');
-
-      // 3. Crear tabla con estructura correcta
       await _createTableRegistrosDespliegue(db);
 
-      // 4. Copiar datos de vuelta
       await db.execute('''
       INSERT INTO registros_despliegue (
         id, fecha_hora, operador_id, estado, latitud, longitud, 
@@ -988,7 +919,6 @@ class DatabaseService {
       FROM registros_despliegue_temp
     ''');
 
-      // 5. Eliminar tabla temporal
       await db.execute('DROP TABLE IF EXISTS registros_despliegue_temp');
 
       print('✅ Migración forzada V10 completada');
@@ -1001,15 +931,10 @@ class DatabaseService {
     }
   }
 
-  // AGREGAR ESTOS MÉTODOS A LA CLASE DatabaseService:
-
   /// ===================================================================
   /// MÉTODOS PARA UBICACIONES
   /// ===================================================================
 
-  /// Obtener ubicaciones pendientes de sincronización
-
-  /// Marcar ubicación como sincronizada
   Future<void> marcarUbicacionSincronizada(int id) async {
     try {
       final db = await database;
@@ -1028,24 +953,19 @@ class DatabaseService {
     }
   }
 
-  /// Obtener estadísticas de ubicaciones
   Future<Map<String, dynamic>> obtenerEstadisticasUbicaciones() async {
     try {
       final db = await database;
 
-      // Total de ubicaciones
       final totalResult = await db.rawQuery('SELECT COUNT(*) as total FROM ubicaciones');
       final total = totalResult.first['total'] as int? ?? 0;
 
-      // Ubicaciones pendientes
       final pendientesResult = await db.rawQuery('SELECT COUNT(*) as pendientes FROM ubicaciones WHERE sincronizado = 0');
       final pendientes = pendientesResult.first['pendientes'] as int? ?? 0;
 
-      // Ubicación más antigua pendiente
       final antiguaResult = await db.rawQuery('SELECT MIN(fecha_creacion) as mas_antigua FROM ubicaciones WHERE sincronizado = 0');
       final masAntigua = antiguaResult.first['mas_antigua'] as String?;
 
-      // Ubicaciones sincronizadas
       final sincronizadas = total - pendientes;
 
       return {
@@ -1065,14 +985,10 @@ class DatabaseService {
     }
   }
 
-  /// Sincronizar ubicaciones pendientes
-// En DatabaseService, en el método sincronizarUbicacionesPendientes:
-
   Future<Map<String, dynamic>> sincronizarUbicacionesPendientes(String accessToken) async {
     try {
       final db = await database;
 
-      // Obtener ubicaciones pendientes (ahora devuelve List<UbicacionModel>)
       final ubicacionesPendientes = await obtenerUbicacionesPendientes();
 
       if (ubicacionesPendientes.isEmpty) {
@@ -1090,21 +1006,19 @@ class DatabaseService {
 
       for (final ubicacion in ubicacionesPendientes) {
         try {
-          // ✅ CORRECCIÓN: Usar propiedades del modelo UbicacionModel
           final datosApi = {
-            'user_id': ubicacion.userId,  // ✅ ubicacion.userId en lugar de ubicacion['user_id']
-            'latitud': ubicacion.latitud,  // ✅ ubicacion.latitud
-            'longitud': ubicacion.longitud, // ✅ ubicacion.longitud
-            'timestamp': ubicacion.timestamp.toIso8601String(), // ✅ ubicacion.timestamp
-            'tipo_usuario': ubicacion.tipoUsuario, // ✅ ubicacion.tipoUsuario
+            'user_id': ubicacion.userId,
+            'latitud': ubicacion.latitud,
+            'longitud': ubicacion.longitud,
+            'timestamp': ubicacion.timestamp.toIso8601String(),
+            'tipo_usuario': ubicacion.tipoUsuario,
             'sincronizado': 1,
           };
 
-          // Enviar a la API
           final enviado = await _enviarUbicacionApi(datosApi, accessToken);
 
           if (enviado) {
-            await marcarUbicacionSincronizada(ubicacion.id!); // ✅ ubicacion.id!
+            await marcarUbicacionSincronizada(ubicacion.id!);
             sincronizadas++;
             print('✅ Ubicación ${ubicacion.id} sincronizada');
           } else {
@@ -1134,7 +1048,6 @@ class DatabaseService {
     }
   }
 
-  /// Método auxiliar para enviar ubicación a API
   Future<bool> _enviarUbicacionApi(Map<String, dynamic> datos, String accessToken) async {
     try {
       final url = '${Enviroment.apiUrlDev}ubicaciones-operador/';
@@ -1155,7 +1068,6 @@ class DatabaseService {
     }
   }
 
-  /// Limpiar ubicaciones antiguas (más de 7 días)
   Future<void> limpiarUbicacionesAntiguas() async {
     try {
       final db = await database;
@@ -1173,9 +1085,6 @@ class DatabaseService {
     }
   }
 
-  // En DatabaseService, actualiza los métodos:
-
-  /// Guardar ubicación localmente (acepta UbicacionModel o Map)
   Future<int> guardarUbicacionLocal(dynamic ubicacionData) async {
     try {
       final db = await database;
@@ -1183,7 +1092,6 @@ class DatabaseService {
       Map<String, dynamic> datos;
 
       if (ubicacionData is UbicacionModel) {
-        // Si es un modelo, convertir a Map
         datos = {
           'user_id': ubicacionData.userId,
           'latitud': ubicacionData.latitud,
@@ -1195,7 +1103,6 @@ class DatabaseService {
           'fecha_sincronizacion': ubicacionData.fechaSincronizacion,
         };
       } else if (ubicacionData is Map<String, dynamic>) {
-        // Si ya es un Map, usarlo directamente
         datos = {
           'user_id': ubicacionData['user_id'] ?? ubicacionData['userId'],
           'latitud': ubicacionData['latitud'],
@@ -1219,7 +1126,6 @@ class DatabaseService {
     }
   }
 
-  /// Obtener ubicaciones pendientes de sincronización (devuelve List<UbicacionModel>)
   Future<List<UbicacionModel>> obtenerUbicacionesPendientes() async {
     try {
       final db = await database;
@@ -1237,7 +1143,6 @@ class DatabaseService {
     }
   }
 
-  /// Convertir Map de BD a UbicacionModel
   UbicacionModel _ubicacionFromMap(Map<String, dynamic> map) {
     return UbicacionModel(
       id: map['id'] as int?,
@@ -1251,15 +1156,12 @@ class DatabaseService {
     );
   }
 
-  // En DatabaseService, agrega este método:
   Future<int> insertRegistroConCorreccion(Map<String, dynamic> datos) async {
     try {
       final db = await database;
 
-      // ✅ CORRECCIÓN AUTOMÁTICA: Convertir camelCase a snake_case
       final datosCorregidos = Map<String, dynamic>.from(datos);
 
-      // Mapeo de conversiones
       final conversiones = {
         'operadorId': 'operador_id',
         'centroEmpadronamiento': 'centro_empadronamiento_id',
@@ -1271,7 +1173,6 @@ class DatabaseService {
         'ultimoIntento': 'ultimo_intento',
       };
 
-      // Aplicar conversiones
       conversiones.forEach((camelCase, snakeCase) {
         if (datosCorregidos.containsKey(camelCase)) {
           datosCorregidos[snakeCase] = datosCorregidos[camelCase];
@@ -1279,7 +1180,6 @@ class DatabaseService {
         }
       });
 
-      // Asegurar campos requeridos
       final ahora = DateTime.now().toIso8601String();
       datosCorregidos['fecha_creacion_local'] ??= ahora;
       datosCorregidos['created_at'] ??= ahora;
@@ -1302,7 +1202,6 @@ class DatabaseService {
     } catch (e) {
       print('❌ Error en insertRegistroConCorreccion: $e');
 
-      // Diagnosticar error
       if (e.toString().contains('no column named')) {
         final match = RegExp(r"no column named '(\w+)'").firstMatch(e.toString());
         if (match != null) {

@@ -366,6 +366,11 @@ class SalidaLlegadaService {
 
   // En lib/services/salida_llegada_service_corregido.dart
 
+  /// ===================================================================
+  /// REGISTRAR LLEGADA (Online/Offline)
+  /// ===================================================================
+  // En lib/services/salida_llegada_service.dart
+
 // ... (después del método registrarSalidaConEmpadronamiento)
 
   /// ===================================================================
@@ -476,5 +481,6 @@ class SalidaLlegadaService {
       };
     }
   }
+
 
 }

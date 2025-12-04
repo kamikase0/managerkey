@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
+import 'package:manager_key/services/connectivity_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../config/enviroment.dart';
@@ -79,11 +80,21 @@ class SyncResult {
 
 class ReporteSyncService extends ChangeNotifier {
   final DatabaseService _databaseService;
-  final AuthService _authService;
+  final ConnectivityService _connectivityService;
+  //final AuthService _authService;
   late ApiService _apiService;
+  String? _accessToken;
 
-  ReporteSyncService(this._databaseService, this._authService) {
-    print('✅ ReporteSyncService instanciado con sus dependencias.');
+  ReporteSyncService({
+    required DatabaseService databaseService,
+    required ConnectivityService connectivityService,
+    // Puedes inyectar AuthService también si lo necesitas desde el principio.
+    // required AuthService authService,
+  })  : _databaseService = databaseService,
+        _connectivityService = connectivityService
+  // _authService = authService
+  {
+    print('✅ ReporteSyncService instanciado con sus dependencias (vía constructor nombrado).');
     _initializeService();
   }
 
@@ -143,7 +154,7 @@ class ReporteSyncService extends ChangeNotifier {
   }
 
   Future<void> _iniciarMonitorConexion() async {
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
+    _connectivitySubscription = _connectivityService.connectivityStream.listen( // Usa el servicio inyectado
           (result) async {
         print('📡 Cambio de conectividad detectado: $result');
         _offlineMode = result == ConnectivityResult.none;
@@ -151,7 +162,7 @@ class ReporteSyncService extends ChangeNotifier {
         if (!_offlineMode && _apiServiceReady) {
           print('✅ Conexión disponible - iniciando sincronización automática');
           await Future.delayed(const Duration(seconds: 2));
-          await sincronizarReportes();
+          await sincronizarReportes(); // Usas el nombre de tu método
         }
       },
     );
@@ -496,8 +507,8 @@ class ReporteSyncService extends ChangeNotifier {
 
   Future<bool> _verificarConexion() async {
     try {
-      final result = await _connectivity.checkConnectivity();
-      return result != ConnectivityResult.none;
+
+      return await _connectivityService.hasInternetConnection();
     } catch (e) {
       return false;
     }
