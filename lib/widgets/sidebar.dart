@@ -59,7 +59,7 @@ class Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          // Menú para Operador Rural
+          // ✅ --- MENÚ PARA OPERADOR RURAL ---
           if (isOperadorRural) ...[
             _buildMenuItem(
               icon: Icons.dashboard,
@@ -77,7 +77,7 @@ class Sidebar extends StatelessWidget {
             ),
             _buildMenuItem(
               icon: Icons.flag,
-              label: 'Llegada de Ruta',
+              label: 'Llegada a Ruta',
               value: 'llegada_ruta',
               isActive: activeView == 'llegada_ruta',
               onTap: onViewChanged,
@@ -93,12 +93,26 @@ class Sidebar extends StatelessWidget {
               context: context,
               icon: Icons.history,
               label: 'Historial de Reportes',
-              // destination: const ReporteHistorialView(),
               destination: const HistorialReportesDiariosView(),
             ),
           ]
-          // Menú para Operador Urbano
+          // ✅ --- MENÚ PARA OPERADOR URBANO (AJUSTADO) ---
           else if (userGroup.toLowerCase().contains('operador')) ...[
+            _buildMenuItem(
+              icon: Icons.dashboard,
+              label: 'Dashboard',
+              value: 'operador',
+              isActive: activeView == 'operador',
+              onTap: onViewChanged,
+            ),
+            // La opción 'Salida de Ruta' se omite para el Urbano
+            _buildMenuItem(
+              icon: Icons.flag,
+              label: 'Llegada a Ruta', // Opción añadida
+              value: 'llegada_ruta',
+              isActive: activeView == 'llegada_ruta',
+              onTap: onViewChanged,
+            ),
             _buildMenuItem(
               icon: Icons.assessment,
               label: 'Reporte Diario',
@@ -110,7 +124,6 @@ class Sidebar extends StatelessWidget {
               context: context,
               icon: Icons.history,
               label: 'Historial de Reportes',
-              // destination: const ReporteHistorialView(),
               destination: const HistorialReportesDiariosView(),
             ),
           ]
