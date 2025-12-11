@@ -264,7 +264,7 @@ class UbicacionService {
   }
 
   /// Iniciar captura automática de ubicaciones
-  void iniciarCapturaAutomatica({Duration intervalo = const Duration(minutes: 2)}) {
+  void iniciarCapturaAutomatica({Duration intervalo = const Duration(minutes: 15)}) {
     if (_locationTimer != null) {
       print('⚠️ Captura automática ya está activa');
       return;
@@ -299,7 +299,7 @@ class UbicacionService {
       final ubicacionesPendientes = await _databaseService.obtenerUbicacionesPendientes();
       if (ubicacionesPendientes.isNotEmpty) {
         print('DEBUG: 📊 Ubicaciones pendientes:');
-        final ultimas = ubicacionesPendientes.take(3);
+        final ultimas = ubicacionesPendientes.take(15);
         for (final ub in ultimas) {
           final minutosDesdeCaptura = DateTime.now().difference(ub.timestamp).inMinutes;
           print('DEBUG: 📊 - ID: ${ub.id}, Captura: ${ub.timestamp}, Minutos desde captura: $minutosDesdeCaptura');

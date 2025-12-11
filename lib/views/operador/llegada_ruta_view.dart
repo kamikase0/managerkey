@@ -782,6 +782,11 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
 // En lib/views/operador/llegada_ruta_view.dart
 // ... dentro de la clase _LlegadaRutaViewState
 
+
+  // C:/Users/Chuwi/AndroidStudioProjects/manager_key/lib/views/operador/llegada_ruta_view.dart
+
+// ... dentro de la clase _LlegadaRutaViewState
+
   Future<void> _registrarLlegada() async {
     // 1. Validación de datos de la UI
     if (_provinciaSeleccionada == null || _puntoEmpadronamientoId == null) {
@@ -824,11 +829,19 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
 
       if (!mounted) return;
 
+      // ✅ CIERRA la alerta de "Cargando..." ANTES de mostrar la de éxito
       AlertHelper.closeLoading(context);
 
       // 5. Mostrar resultado al usuario usando tus alertas
       if (resultado['exitoso']) {
         final bool esSincronizado = resultado['sincronizado'] == true;
+
+        // ✅✅✅ CORRECCIÓN APLICADA AQUÍ ✅✅✅
+        // Guardamos la función de limpieza para ejecutarla después
+        final postAction = () {
+          _limpiarFormulario();
+          setState(() {}); // Actualiza la UI (ej. el monitor de sincronización)
+        };
 
         if (esSincronizado) {
           // Caso ONLINE: Éxito y sincronizado
@@ -836,9 +849,12 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
             context: context,
             title: '¡Llegada Registrada!',
             text: 'Los datos se guardaron y sincronizaron con el servidor.',
+            // onConfirm ahora solo cierra la alerta, la acción se hace después.
             onConfirm: () {
-              _limpiarFormulario();
-              setState(() {});
+              // Cerramos la alerta de éxito manualmente para tener control
+              if (mounted) Navigator.of(context, rootNavigator: true).pop();
+              // Ejecutamos la acción después de cerrar
+              postAction();
             },
           );
         } else {
@@ -847,9 +863,12 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
             context: context,
             title: '¡Llegada Guardada!',
             text: 'Registro guardado localmente. Se sincronizará cuando haya conexión.',
+            // onConfirm ahora solo cierra la alerta
             onConfirm: () {
-              _limpiarFormulario();
-              setState(() {});
+              // Cerramos la alerta de información manualmente
+              if (mounted) Navigator.of(context, rootNavigator: true).pop();
+              // Ejecutamos la acción después de cerrar
+              postAction();
             },
           );
         }
@@ -876,5 +895,6 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
       }
     }
   }
+
 
 }

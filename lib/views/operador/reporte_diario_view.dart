@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:manager_key/services/punto_empadronamiento_service.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:math';
 import '../../models/punto_empadronamiento_model.dart';
+import '../../models/reporte_diario_local.dart';
+import '../../models/sync_models.dart';
 import '../../services/api_service.dart';
+import '../../services/reporte_sync_manager.dart';
 import '../../services/reporte_sync_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
@@ -25,24 +27,24 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
   // Controladores
   final TextEditingController _codigoEstacionController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _transmitidoController = TextEditingController();
   final TextEditingController _rInicialiController = TextEditingController();
   final TextEditingController _rFinalController = TextEditingController();
   final TextEditingController _rTotalController = TextEditingController();
   final TextEditingController _rObservacionesController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _rSaltosController = TextEditingController();
 
   final TextEditingController _cInicialiController = TextEditingController();
   final TextEditingController _cFinalController = TextEditingController();
   final TextEditingController _cTotalController = TextEditingController();
   final TextEditingController _cObservacionesController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _cSaltosController = TextEditingController();
 
   final TextEditingController _observacionesController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _incidenciasController = TextEditingController();
   final TextEditingController _rTotal = TextEditingController();
   final TextEditingController _cTotal = TextEditingController();
@@ -50,15 +52,17 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
   // Controladores para los dígitos finales (el último número del formato)
   final TextEditingController _rInicialDigitoFinalController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _rFinalDigitoFinalController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _cInicialDigitoFinalController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _cFinalDigitoFinalController =
-      TextEditingController();
+  TextEditingController();
 
   late ReporteSyncService _syncService;
+  bool _isDependenciesInitialized = false; // Flag para evitar reinicializaciones
+
   late User? _userData;
   String _equipoId = '00000';
 
@@ -83,7 +87,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   bool _cargadoProvincias = false;
   int? _puntoEmpadronamientoId;
   final PuntoEmpadronamientoService _puntoService =
-      PuntoEmpadronamientoService();
+  PuntoEmpadronamientoService();
 
   //Habilitacion o deshababilitacion de campos
   bool _camposR = false;
@@ -92,10 +96,9 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   @override
   void initState() {
     super.initState();
-    _syncService = context.read<ReporteSyncService>();
+    // Mantén aquí las inicializaciones que NO dependen del context.
     _fechaController.text = DateTime.now().toString().split('.')[0];
 
-    // Inicializar dígitos finales con valor por defecto
     _rInicialDigitoFinalController.text = '';
     _rFinalDigitoFinalController.text = '';
     _cInicialDigitoFinalController.text = '';
@@ -103,6 +106,17 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
 
     _initializeApp();
     _cargarDatosEmpadronamiento();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Inicializa el servicio aquí para asegurar que el context esté listo.
+    // El flag previene que se vuelva a ejecutar si el widget se reconstruye.
+    if (!_isDependenciesInitialized) {
+      _syncService = context.read<ReporteSyncService>();
+      _isDependenciesInitialized = true;
+    }
   }
 
   Future<void> _initializeApp() async {
@@ -124,7 +138,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           final operador = _userData!.operador!;
           _transmitidoController.text = operador.idOperador.toString();
           _codigoEstacionController.text =
-              'Estación: ${operador.nroEstacion ?? 'N/A'}';
+          'Estación: ${operador.nroEstacion ?? 'N/A'}';
 
           // ✅ CORREGIDO: Usar nro_estacion en lugar de id_operador
           _equipoId = (operador.nroEstacion ?? '0').toString().padLeft(5, '0');
@@ -145,11 +159,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   }
 
   void _validarRegistroR(
-    String valor,
-    TextEditingController controller,
-    TextEditingController digitoFinalController,
-    bool esInicial,
-  ) {
+      String valor,
+      TextEditingController controller,
+      TextEditingController digitoFinalController,
+      bool esInicial,
+      ) {
     String limpio = valor.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (limpio.length > 4) {
@@ -172,11 +186,11 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   }
 
   void _validarRegistroC(
-    String valor,
-    TextEditingController controller,
-    TextEditingController digitoFinalController,
-    bool esInicial,
-  ) {
+      String valor,
+      TextEditingController controller,
+      TextEditingController digitoFinalController,
+      bool esInicial,
+      ) {
     String limpio = valor.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (limpio.length > 4) {
@@ -199,12 +213,12 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
   }
 
   void _validarDigitoFinal(
-    String valor,
-    TextEditingController controller,
-    TextEditingController cuatroDigitosController,
-    bool esR,
-    bool esInicial,
-  ) {
+      String valor,
+      TextEditingController controller,
+      TextEditingController cuatroDigitosController,
+      bool esR,
+      bool esInicial,
+      ) {
     String limpio = valor.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (limpio.length > 1) {
@@ -259,17 +273,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         setState(() {
           _rTotal.clear();
         });
-        // if (mounted) {
-        //   ScaffoldMessenger.of(context).showSnackBar(
-        //     const SnackBar(
-        //       content: Text(
-        //         'El valor final de R debe ser mayor o igual que el inicial',
-        //       ),
-        //       backgroundColor: Colors.red,
-        //       duration: Duration(seconds: 3),
-        //     ),
-        //   );
-        // }
       }
     } else {
       setState(() {
@@ -294,17 +297,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         setState(() {
           _cTotal.clear();
         });
-        // if (mounted) {
-        //   ScaffoldMessenger.of(context).showSnackBar(
-        //     const SnackBar(
-        //       content: Text(
-        //         'El valor final de C debe ser mayor o igual que el inicial',
-        //       ),
-        //       backgroundColor: Colors.red,
-        //       duration: Duration(seconds: 4),
-        //     ),
-        //   );
-        // }
       }
     } else {
       setState(() {
@@ -312,196 +304,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       });
     }
   }
-
-  // void _enviarReporte() async {
-  //   if (!_formKey.currentState!.validate()) return;
-  //
-  //   if (!_gpsActivado && _ubicacionRequerida) {
-  //     _mostrarDialogoActivacionGPS();
-  //     return;
-  //   }
-  //
-  //   // ✅ NUEVA VALIDACIÓN: Validar rangos de R y C antes de enviar
-  //   if (_camposR) {
-  //     final rInicial = int.tryParse(_rInicialiController.text) ?? 0;
-  //     final rFinal = int.tryParse(_rFinalController.text) ?? 0;
-  //     if (rFinal < rInicial) {
-  //       await _mostrarAlertaError(
-  //           'El valor final de R no puede ser menor que el valor inicial.');
-  //       return;
-  //     }
-  //   }
-  //
-  //   if (_camposC) {
-  //     final cInicial = int.tryParse(_cInicialiController.text) ?? 0;
-  //     final cFinal = int.tryParse(_cFinalController.text) ?? 0;
-  //     if (cFinal < cInicial) {
-  //       await _mostrarAlertaError(
-  //           'El valor final de C no puede ser menor que el valor inicial.');
-  //       return;
-  //     }
-  //   }
-  //
-  //   setState(() => _isSubmitting = true);
-  //
-  //   try {
-  //     if (_userData?.operador == null) {
-  //       throw Exception('Datos de operador no disponibles');
-  //     }
-  //
-  //     bool ubicacionCapturada = false;
-  //     if (_gpsActivado && _ubicacionRequerida) {
-  //       ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
-  //     }
-  //
-  //     final ahora = DateTime.now();
-  //     final fechaHora = ahora.toIso8601String();
-  //
-  //     // --- Lógica condicional para 'R' ---
-  //     String rInicialCompleto;
-  //     String rFinalCompleto;
-  //     int registroR;
-  //
-  //     if (!_camposR) {
-  //       print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
-  //       rInicialCompleto = _buildFormatoR('0000', '0');
-  //       rFinalCompleto = _buildFormatoR('0000', '0');
-  //       registroR = 0;
-  //     } else {
-  //       rInicialCompleto = _buildFormatoR(
-  //         _rInicialiController.text.padLeft(4, '0'),
-  //         _rInicialDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _rInicialDigitoFinalController.text,
-  //       );
-  //
-  //       rFinalCompleto = _buildFormatoR(
-  //         _rFinalController.text.padLeft(4, '0'),
-  //         _rFinalDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _rFinalDigitoFinalController.text,
-  //       );
-  //       registroR = diferenciaR;
-  //     }
-  //
-  //     // --- Lógica condicional para 'C' ---
-  //     String cInicialCompleto;
-  //     String cFinalCompleto;
-  //     int registroC;
-  //
-  //     if (!_camposC) {
-  //       print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
-  //       cInicialCompleto = _buildFormatoC('0000', '0');
-  //       cFinalCompleto = _buildFormatoC('0000', '0');
-  //       registroC = 0;
-  //     } else {
-  //       cInicialCompleto = _buildFormatoC(
-  //         _cInicialiController.text.padLeft(4, '0'),
-  //         _cInicialDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _cInicialDigitoFinalController.text,
-  //       );
-  //       cFinalCompleto = _buildFormatoC(
-  //         _cFinalController.text.padLeft(4, '0'),
-  //         _cFinalDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _cFinalDigitoFinalController.text,
-  //       );
-  //       registroC = diferenciaC;
-  //     }
-  //
-  //     final reporteData = {
-  //       'fecha_reporte': _fechaController.text,
-  //       'contador_inicial_c': cInicialCompleto,
-  //       'contador_final_c': cFinalCompleto,
-  //       'registro_c': registroC,
-  //       'contador_inicial_r': rInicialCompleto,
-  //       'contador_final_r': rFinalCompleto,
-  //       'registro_r': registroR,
-  //       'incidencias': _incidenciasController.text,
-  //       'observaciones': _observacionesController.text,
-  //       'operador': _userData!.operador!.idOperador,
-  //       'estacion': _userData!.operador!.idEstacion,
-  //       'centro_empadronamiento': _puntoEmpadronamientoId,
-  //       'estado': 'ENVIO REPORTE',
-  //       'sincronizar': true,
-  //
-  //       // ✅ CORREGIDO: Usar nombres consistentes
-  //       'observacionC': _cObservacionesController.text,
-  //       'observacionR': _rObservacionesController.text,
-  //       'saltosenC': int.tryParse(_cSaltosController.text) ?? 0,
-  //       'saltosenR': int.tryParse(_rSaltosController.text) ??
-  //           0, // ✅ CORREGIDO: usar _rSaltosController
-  //     };
-  //
-  //     final despliegueData = {
-  //       'destino':
-  //       'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
-  //       'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
-  //       'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
-  //       'descripcion_reporte': null,
-  //       'estado': 'REPORTE ENVIADO',
-  //       'sincronizar': true,
-  //       'observaciones':
-  //       'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
-  //       'incidencias': _ubicacionRequerida
-  //           ? (ubicacionCapturada
-  //           ? 'Ubicación capturada correctamente'
-  //           : 'No se pudo capturar ubicación')
-  //           : 'Ubicación no requerida para este reporte',
-  //       'fecha_hora': fechaHora,
-  //       'operador': _userData!.operador!.idOperador,
-  //       'sincronizado': false,
-  //     };
-  //
-  //     print('📤 Enviando reporte con formatos:');
-  //     print('📍 R Inicial: $rInicialCompleto');
-  //     print('📍 R Final: $rFinalCompleto');
-  //     print('📍 Registro R: $registroR');
-  //     print('📍 C Inicial: $cInicialCompleto');
-  //     print('📍 C Final: $cFinalCompleto');
-  //     print('📍 Registro C: $registroC');
-  //     print('📍 Punto Empadronamiento ID: $_puntoEmpadronamientoId');
-  //
-  //     final result = await _syncService.saveReporteGeolocalizacion(
-  //       reporteData: reporteData,
-  //       despliegueData: despliegueData,
-  //     );
-  //
-  //     if (!mounted) return;
-  //
-  //     // ✅ NUEVO: Mostrar alerta de confirmación
-  //     await _mostrarAlertaResultado(
-  //       exito: result['success'],
-  //       guardadoLocal: result['saved_locally'] == true,
-  //       ubicacionCapturada: ubicacionCapturada,
-  //       ubicacionRequerida: _ubicacionRequerida,
-  //       mensaje: result['message'],
-  //     );
-  //
-  //     if (result['success']) {
-  //       _cleanFormulario();
-  //       setState(() {
-  //         _latitud = null;
-  //         _longitud = null;
-  //         _coordenadas = 'No capturadas';
-  //         _locationCaptured = false;
-  //         _ubicacionRequerida = true;
-  //         _camposR = false;
-  //         _camposC = false;
-  //       });
-  //     }
-  //   } catch (e) {
-  //     if (!mounted) return;
-  //
-  //     // ✅ NUEVO: Mostrar alerta de error
-  //     await _mostrarAlertaError('Error al enviar reporte: $e');
-  //   } finally {
-  //     if (mounted) {
-  //       setState(() => _isSubmitting = false);
-  //     }
-  //   }
-  // }
 
   Widget _buildCamposEmpadronamiento() {
     return Card(
@@ -593,17 +395,17 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                   maxLength: 4,
                   onChanged: (valor) => esR
                       ? _validarRegistroR(
-                          valor,
-                          controller4Digitos,
-                          controllerDigitoFinal,
-                          esInicial,
-                        )
+                    valor,
+                    controller4Digitos,
+                    controllerDigitoFinal,
+                    esInicial,
+                  )
                       : _validarRegistroC(
-                          valor,
-                          controller4Digitos,
-                          controllerDigitoFinal,
-                          esInicial,
-                        ),
+                    valor,
+                    controller4Digitos,
+                    controllerDigitoFinal,
+                    esInicial,
+                  ),
                 ),
               ),
               Container(
@@ -642,13 +444,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                     );
                     final formatoCompleto = esR
                         ? _buildFormatoR(
-                            controller4Digitos.text.padLeft(4, '0'),
-                            valor.isEmpty ? '0' : valor,
-                          )
+                      controller4Digitos.text.padLeft(4, '0'),
+                      valor.isEmpty ? '0' : valor,
+                    )
                         : _buildFormatoC(
-                            controller4Digitos.text.padLeft(4, '0'),
-                            valor.isEmpty ? '0' : valor,
-                          );
+                      controller4Digitos.text.padLeft(4, '0'),
+                      valor.isEmpty ? '0' : valor,
+                    );
                     print(
                       '🎯 ${esR ? 'R' : 'C'} ${esInicial ? 'Inicial' : 'Final'}: $formatoCompleto',
                     );
@@ -903,7 +705,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   label: 'R Inicial',
                                   controller4Digitos: _rInicialiController,
                                   controllerDigitoFinal:
-                                      _rInicialDigitoFinalController,
+                                  _rInicialDigitoFinalController,
                                   esR: true,
                                   esInicial: true,
                                 ),
@@ -912,7 +714,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   label: 'R Final',
                                   controller4Digitos: _rFinalController,
                                   controllerDigitoFinal:
-                                      _rFinalDigitoFinalController,
+                                  _rFinalDigitoFinalController,
                                   esR: true,
                                   esInicial: false,
                                 ),
@@ -921,7 +723,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   controller: _rSaltosController,
                                   decoration: InputDecoration(
                                     labelText:
-                                        'Saltos en registro R (Opcional)',
+                                    'Saltos en registro R (Opcional)',
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
@@ -968,7 +770,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   decoration: InputDecoration(
                                     labelText: 'Observacion R (Opcional)',
                                     hintText:
-                                        'Ingrese observaciones de registro R...',
+                                    'Ingrese observaciones de registro R...',
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
@@ -1054,7 +856,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   label: 'C Inicial',
                                   controller4Digitos: _cInicialiController,
                                   controllerDigitoFinal:
-                                      _cInicialDigitoFinalController,
+                                  _cInicialDigitoFinalController,
                                   esR: false,
                                   esInicial: true,
                                 ),
@@ -1063,7 +865,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   label: 'C Final',
                                   controller4Digitos: _cFinalController,
                                   controllerDigitoFinal:
-                                      _cFinalDigitoFinalController,
+                                  _cFinalDigitoFinalController,
                                   esR: false,
                                   esInicial: false,
                                 ),
@@ -1072,7 +874,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   controller: _cSaltosController,
                                   decoration: InputDecoration(
                                     labelText:
-                                        'Saltos en registro C (Opcional)',
+                                    'Saltos en registro C (Opcional)',
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
@@ -1119,7 +921,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                                   decoration: InputDecoration(
                                     labelText: 'Observacion C (Opcional)',
                                     hintText:
-                                        'Ingrese observaciones de registro C...',
+                                    'Ingrese observaciones de registro C...',
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
@@ -1186,23 +988,23 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                               ),
                               child: _isSubmitting
                                   ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation(
-                                          Colors.white,
-                                        ),
-                                      ),
-                                    )
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
                                   : const Text(
-                                      'ENVIAR REPORTE',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                'ENVIAR REPORTE',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -1258,12 +1060,12 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     _rTotal.dispose();
     _cTotal.dispose();
     _fechaController.dispose();
-    _cSaltosController.dispose(); // ✅ Añadido dispose faltante
-    _rSaltosController.dispose(); // ✅ Añadido dispose faltante
-    _rObservacionesController.dispose(); // ✅ Añadido dispose faltante
-    _cObservacionesController.dispose(); // ✅ Añadido dispose faltante
-    _rTotalController.dispose(); // ✅ Añadido dispose faltante
-    _cTotalController.dispose(); // ✅ Añadido dispose faltante
+    _cSaltosController.dispose();
+    _rSaltosController.dispose();
+    _rObservacionesController.dispose();
+    _cObservacionesController.dispose();
+    _rTotalController.dispose();
+    _cTotalController.dispose();
 
     // Dispose de los nuevos controladores de dígitos finales
     _rInicialDigitoFinalController.dispose();
@@ -1285,7 +1087,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           ),
           content: const Text(
             '¿Estás seguro de que quieres desactivar los Registros Nuevos (R)?\n\n'
-            'Los datos ingresados se perderán.',
+                'Los datos ingresados se perderán.',
             style: TextStyle(fontSize: 14),
           ),
           backgroundColor: Colors.blue.shade50,
@@ -1308,7 +1110,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                 Navigator.of(context).pop();
                 setState(() {
                   _camposR = false;
-                  _registroRenCero(); // Limpiar campos R
+                  _registroRenCero();
                 });
               },
               style: ElevatedButton.styleFrom(
@@ -1342,7 +1144,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
           ),
           content: const Text(
             '¿Estás seguro de que quieres desactivar los Registros de Cambio de Domicilio (C)?\n\n'
-            'Los datos ingresados se perderán.',
+                'Los datos ingresados se perderán.',
             style: TextStyle(fontSize: 14),
           ),
           backgroundColor: Colors.orange.shade50,
@@ -1365,7 +1167,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
                 Navigator.of(context).pop();
                 setState(() {
                   _camposC = false;
-                  _registroCenCero(); // Limpiar campos C
+                  _registroCenCero();
                 });
               },
               style: ElevatedButton.styleFrom(
@@ -1588,8 +1390,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         labelText: 'Punto de Empadronamiento *',
         hintText: _provinciaSeleccionada != null
             ? (_puntosEmpadronamiento.isEmpty
-                  ? 'Cargando puntos...'
-                  : 'Seleccione un punto')
+            ? 'Cargando puntos...'
+            : 'Seleccione un punto')
             : 'Primero seleccione una provincia',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         contentPadding: const EdgeInsets.symmetric(
@@ -1606,10 +1408,10 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         );
       }).toList(),
       onChanged:
-          (_provinciaSeleccionada != null && _puntosEmpadronamiento.isNotEmpty)
+      (_provinciaSeleccionada != null && _puntosEmpadronamiento.isNotEmpty)
           ? (String? nuevoPunto) {
-              _onPuntoEmpadronamientoSeleccionado(nuevoPunto);
-            }
+        _onPuntoEmpadronamientoSeleccionado(nuevoPunto);
+      }
           : null,
       validator: (value) {
         if (_provinciaSeleccionada != null &&
@@ -1668,7 +1470,7 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         _provinciaSeleccionada!,
       );
       final puntoSeleccionado = puntos.firstWhere(
-        (p) => p.puntoEmpadronamiento == punto,
+            (p) => p.puntoEmpadronamiento == punto,
         orElse: () => PuntoEmpadronamiento(
           id: 0,
           provincia: '',
@@ -1803,111 +1605,6 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     });
   }
 
-  // ✅ NUEVO: Función para mostrar alerta de resultado
-  // Future<void> _mostrarAlertaResultado({
-  //   required bool exito,
-  //   required bool guardadoLocal,
-  //   required bool ubicacionCapturada,
-  //   required bool ubicacionRequerida,
-  //   String? mensaje,
-  // }) async {
-  //   String titulo;
-  //   String contenido;
-  //   Color colorFondo;
-  //   IconData icono;
-  //
-  //   if (exito) {
-  //     if (guardadoLocal) {
-  //       titulo = '📱 Reporte Guardado Localmente';
-  //       contenido = 'El reporte se ha guardado en el dispositivo. '
-  //           'Se sincronizará automáticamente cuando se detecte conexión a internet.';
-  //       colorFondo = Colors.orange.shade50;
-  //       icono = Icons.signal_wifi_off;
-  //     } else {
-  //       if (ubicacionRequerida) {
-  //         if (ubicacionCapturada) {
-  //           titulo = 'Reporte Enviado con Éxito';
-  //           contenido = 'El reporte ha sido enviado correctamente.';
-  //           colorFondo = Colors.green.shade50;
-  //           icono = Icons.check_circle;
-  //         } else {
-  //           //titulo = '⚠️ Reporte Enviado sin Ubicación';
-  //           titulo = '⚠️ Reporte Enviado ';
-  //           contenido = 'El reporte ha sido enviado.';
-  //           colorFondo = Colors.orange.shade50;
-  //           icono = Icons.location_off;
-  //         }
-  //       } else {
-  //         titulo = '✅ Reporte Enviado';
-  //         contenido = 'El reporte ha sido enviado correctamente '
-  //             'sin requerir ubicación.';
-  //         colorFondo = Colors.green.shade50;
-  //         icono = Icons.check_circle;
-  //       }
-  //     }
-  //   } else {
-  //     titulo = '❌ Error al Enviar';
-  //     contenido =
-  //         mensaje ?? 'Ha ocurrido un error al intentar enviar el reporte.';
-  //     colorFondo = Colors.red.shade50;
-  //     icono = Icons.error;
-  //   }
-  //
-  //   await showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (BuildContext context) {
-  //       return AlertDialog(
-  //         backgroundColor: colorFondo,
-  //         shape: RoundedRectangleBorder(
-  //           borderRadius: BorderRadius.circular(16),
-  //         ),
-  //         title: Row(
-  //           children: [
-  //             Icon(icono,
-  //                 size: 28, color: _getColorIcono(exito, guardadoLocal)),
-  //             const SizedBox(width: 12),
-  //             Expanded(
-  //               child: Text(
-  //                 titulo,
-  //                 style: TextStyle(
-  //                   fontWeight: FontWeight.bold,
-  //                   color: _getColorTexto(exito, guardadoLocal),
-  //                   fontSize: 18,
-  //                 ),
-  //               ),
-  //             ),
-  //           ],
-  //         ),
-  //         content: Text(
-  //           contenido,
-  //           style: const TextStyle(
-  //             fontSize: 14,
-  //             height: 1.4,
-  //           ),
-  //         ),
-  //         actions: [
-  //           TextButton(
-  //             onPressed: () {
-  //               Navigator.of(context).pop();
-  //             },
-  //             style: TextButton.styleFrom(
-  //               foregroundColor: _getColorBoton(exito, guardadoLocal),
-  //             ),
-  //             child: Text(
-  //               exito ? 'ACEPTAR' : 'REINTENTAR',
-  //               style: const TextStyle(
-  //                 fontWeight: FontWeight.bold,
-  //               ),
-  //             ),
-  //           ),
-  //         ],
-  //       );
-  //     },
-  //   );
-  // }
-
-  // ✅ NUEVO: Función para mostrar alerta de error
   Future<void> _mostrarAlertaError(String mensaje) async {
     await showDialog(
       context: context,
@@ -1972,265 +1669,210 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     return Colors.green.shade700;
   }
 
-  // 🔄 CAMBIOS EN _enviarReporte() - PARTE 1: Detectar conexión
-
-  // void _enviarReporte() async {
-  //   if (!_formKey.currentState!.validate()) return;
-  //
-  //   // ✅ NUEVA VALIDACIÓN: Verificar si campos R están deshabilitados PERO tienen valores
-  //   if (!_camposR) {
-  //     final rInicialTieneValor = _rInicialiController.text.isNotEmpty;
-  //     final rFinalTieneValor = _rFinalController.text.isNotEmpty;
-  //
-  //     if (rInicialTieneValor || rFinalTieneValor) {
-  //       // Hay valores en R pero la sección está deshabilitada
-  //       print('⚠️ ADVERTENCIA: Campos R tienen valores pero la sección está deshabilitada');
-  //       print('   R Inicial ingresado: ${_rInicialiController.text}');
-  //       print('   R Final ingresado: ${_rFinalController.text}');
-  //
-  //       await _mostrarDialogoConfirmacionR();
-  //       return;
-  //     }
-  //   }
-  //
-  //   // ✅ NUEVA VALIDACIÓN: Verificar si campos C están deshabilitados PERO tienen valores
-  //   if (!_camposC) {
-  //     final cInicialTieneValor = _cInicialiController.text.isNotEmpty;
-  //     final cFinalTieneValor = _cFinalController.text.isNotEmpty;
-  //
-  //     if (cInicialTieneValor || cFinalTieneValor) {
-  //       // Hay valores en C pero la sección está deshabilitada
-  //       print('⚠️ ADVERTENCIA: Campos C tienen valores pero la sección está deshabilitada');
-  //       print('   C Inicial ingresado: ${_cInicialiController.text}');
-  //       print('   C Final ingresado: ${_cFinalController.text}');
-  //
-  //       await _mostrarDialogoConfirmacionC();
-  //       return;
-  //     }
-  //   }
-  //
-  //   // 1. Validar GPS si es requerido
-  //   if (!_gpsActivado && _ubicacionRequerida) {
-  //     _mostrarDialogoActivacionGPS();
-  //     return;
-  //   }
-  //
-  //   setState(() => _isSubmitting = true);
-  //
-  //   try {
-  //     if (_userData?.operador == null) {
-  //       throw Exception('Datos de operador no disponibles');
-  //     }
-  //
-  //     // 2. Verificar conexión a internet
-  //     final tieneInternet = await _verificarConexionInternet();
-  //
-  //     // 3. Capturar ubicación si es necesario
-  //     bool ubicacionCapturada = false;
-  //     if (_gpsActivado && _ubicacionRequerida) {
-  //       ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
-  //     }
-  //
-  //     final ahora = DateTime.now();
-  //     final fechaHora = ahora.toIso8601String();
-  //
-  //     // ⛔️ INICIO DEL BLOQUE FALTANTE ⛔️
-  //     // --- Lógica condicional para 'R' ---
-  //     String rInicialCompleto;
-  //     String rFinalCompleto;
-  //     int registroR;
-  //
-  //     if (!_camposR) {
-  //       print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
-  //       rInicialCompleto = _buildFormatoR('0000', '0');
-  //       rFinalCompleto = _buildFormatoR('0000', '0');
-  //       registroR = 0;
-  //     } else {
-  //       rInicialCompleto = _buildFormatoR(
-  //         _rInicialiController.text.padLeft(4, '0'),
-  //         _rInicialDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _rInicialDigitoFinalController.text,
-  //       );
-  //
-  //       rFinalCompleto = _buildFormatoR(
-  //         _rFinalController.text.padLeft(4, '0'),
-  //         _rFinalDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _rFinalDigitoFinalController.text,
-  //       );
-  //       registroR = diferenciaR;
-  //     }
-  //
-  //     // --- Lógica condicional para 'C' ---
-  //     String cInicialCompleto;
-  //     String cFinalCompleto;
-  //     int registroC;
-  //
-  //     if (!_camposC) {
-  //       print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
-  //       cInicialCompleto = _buildFormatoC('0000', '0');
-  //       cFinalCompleto = _buildFormatoC('0000', '0');
-  //       registroC = 0;
-  //     } else {
-  //       cInicialCompleto = _buildFormatoC(
-  //         _cInicialiController.text.padLeft(4, '0'),
-  //         _cInicialDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _cInicialDigitoFinalController.text,
-  //       );
-  //       cFinalCompleto = _buildFormatoC(
-  //         _cFinalController.text.padLeft(4, '0'),
-  //         _cFinalDigitoFinalController.text.isEmpty
-  //             ? '0'
-  //             : _cFinalDigitoFinalController.text,
-  //       );
-  //       registroC = diferenciaC;
-  //     }
-  //     // ⛔️ FIN DEL BLOQUE FALTANTE ⛔️
-  //
-  //     // 4. Construir mapa de datos para el reporte
-  //     final reporteData = {
-  //       'fecha_reporte': _fechaController.text,
-  //       'contador_inicial_c': cInicialCompleto,
-  //       'contador_final_c': cFinalCompleto,
-  //       'registro_c': registroC,
-  //       'contador_inicial_r': rInicialCompleto,
-  //       'contador_final_r': rFinalCompleto,
-  //       'registro_r': registroR,
-  //       'incidencias': _incidenciasController.text,
-  //       'observaciones': _observacionesController.text,
-  //       'operador': _userData!.operador!.idOperador,
-  //       'estacion': _userData!.operador!.idEstacion,
-  //       'centro_empadronamiento': _puntoEmpadronamientoId,
-  //       'estado': 'ENVIO REPORTE',
-  //       'sincronizar': true,
-  //       'observacionC': _cObservacionesController.text,
-  //       'observacionR': _rObservacionesController.text,
-  //       'saltosenC': int.tryParse(_cSaltosController.text) ?? 0,
-  //       'saltosenR': int.tryParse(_rSaltosController.text) ?? 0,
-  //     };
-  //
-  //     // 5. Construir mapa de datos para el despliegue/geolocalización
-  //     final despliegueData = {
-  //       'destino':
-  //       'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
-  //       'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
-  //       'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
-  //       'descripcion_reporte': null,
-  //       'estado': 'REPORTE ENVIADO',
-  //       'sincronizar': true,
-  //       'observaciones':
-  //       'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
-  //       'incidencias': _ubicacionRequerida
-  //           ? (ubicacionCapturada
-  //           ? 'Ubicación capturada correctamente'
-  //           : 'No se pudo capturar ubicación')
-  //           : 'Ubicación no requerida para este reporte',
-  //       'fecha_hora': fechaHora,
-  //       'operador': _userData!.operador!.idOperador,
-  //       'sincronizado': false,
-  //     };
-  //
-  //     print('📤 Enviando reporte con formatos:');
-  //     print('📍 R Inicial: $rInicialCompleto');
-  //     print('📍 R Final: $rFinalCompleto');
-  //     print('📍 C Inicial: $cInicialCompleto');
-  //     print('📍 C Final: $cFinalCompleto');
-  //
-  //     // 6. Preparar ApiService si hay conexión
-  //     final authService = AuthService();
-  //     final accessToken = await authService.getAccessToken();
-  //     ApiService? apiService;
-  //     if (tieneInternet && accessToken != null) {
-  //       apiService = ApiService(accessToken: accessToken);
-  //     }
-  //
-  //     // 7. Guardar los datos localmente
-  //     final result = await _syncService.saveReporteGeolocalizacion(
-  //       reporteData: reporteData,
-  //       despliegueData: despliegueData,
-  //     );
-  //
-  //     // 8. Si hay conexión, intentar sincronizar inmediatamente
-  //     if (tieneInternet && apiService != null) {
-  //       print('🌐 Conexión disponible - sincronizando inmediatamente');
-  //       await _syncService.sincronizarReportes(apiService: apiService);
-  //     }
-  //
-  //     if (!mounted) return;
-  //
-  //     // 9. Mostrar resultado al usuario
-  //     await _mostrarAlertaResultado(
-  //       exito: result['success'],
-  //       guardadoLocal: result['saved_locally'] == true,
-  //       ubicacionCapturada: ubicacionCapturada,
-  //       ubicacionRequerida: _ubicacionRequerida,
-  //       mensaje: result['message'],
-  //       tieneInternet: tieneInternet,
-  //     );
-  //
-  //     // 10. Limpiar formulario si todo fue exitoso
-  //     if (result['success']) {
-  //       _cleanFormulario();
-  //       setState(() {
-  //         _latitud = null;
-  //         _longitud = null;
-  //         _coordenadas = 'No capturadas';
-  //         _locationCaptured = false;
-  //         _ubicacionRequerida = true;
-  //         _camposR = false;
-  //         _camposC = false;
-  //       });
-  //     }
-  //   } catch (e) {
-  //     if (!mounted) return;
-  //     await _mostrarAlertaError('Error al enviar reporte: $e');
-  //   } finally {
-  //     if (mounted) {
-  //       setState(() => _isSubmitting = false);
-  //     }
-  //   }
-  // }
-
-  void _enviarReporte() async {
+  // Método principal para enviar el reporte (CORREGIDO)
+  Future<void> _enviarReporte() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // 1. Validar campos R/C deshabilitados pero con valores
-    await _validarCamposDeshabilitadosConValores();
+    setState(() => _isSubmitting = true);
 
-    // 2. Continuar con el envío
-    await _continuarEnvioReporte();
+    try {
+      final userData = await AuthService().getCurrentUser();
+      if (userData?.operador == null) {
+        throw Exception('Datos de operador no disponibles');
+      }
+
+      // 1. Verificar campos deshabilitados con valores usando confirmaciones
+      if (!_camposR && _tienenValoresR()) {
+        final confirmar = await _mostrarDialogoConfirmacionR();
+        if (confirmar == true) {
+          setState(() => _camposR = true);
+          _calcularDiferencia();
+        } else if (confirmar == false) {
+          _registroRenCero();
+        } else {
+          setState(() => _isSubmitting = false);
+          return; // Usuario canceló
+        }
+      }
+
+      if (!_camposC && _tienenValoresC()) {
+        final confirmar = await _mostrarDialogoConfirmacionC();
+        if (confirmar == true) {
+          setState(() => _camposC = true);
+          _calcularDiferencia();
+        } else if (confirmar == false) {
+          _registroCenCero();
+        } else {
+          setState(() => _isSubmitting = false);
+          return; // Usuario canceló
+        }
+      }
+
+      // 2. Verificar conexión a internet
+      final tieneInternet = await _verificarConexionInternet();
+
+      // 3. Verificar GPS si es requerido
+      if (!_gpsActivado && _ubicacionRequerida) {
+        _mostrarDialogoActivacionGPS();
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      // 4. Capturar ubicación si es necesario
+      bool ubicacionCapturada = false;
+      if (_gpsActivado && _ubicacionRequerida) {
+        ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
+      }
+
+      // 5. Construir datos del reporte
+      final reporteData = await _construirDatosReporte();
+
+      // 6. Crear reporte local
+      final reporte = _crearReporteLocal(reporteData);
+
+      // 7. Usar el sync manager para guardar inteligentemente
+      final syncManager = ReporteSyncManager();
+      final resultado = await syncManager.guardarReporte(reporte);
+
+      // 8. Mostrar resultado
+      await _mostrarAlertaResultadoCorregido(
+        exito: resultado['success'] == true,
+        guardadoLocal: resultado['sincronizado'] == false,
+        tieneInternet: tieneInternet,
+        ubicacionCapturada: ubicacionCapturada,
+        ubicacionRequerida: _ubicacionRequerida,
+        mensaje: resultado['message'],
+      );
+
+      // 9. Si fue exitoso, limpiar formulario
+      if (resultado['success'] == true) {
+        _cleanFormulario();
+      }
+
+    } catch (e) {
+      await _mostrarAlertaResultadoCorregido(
+        exito: false,
+        guardadoLocal: false,
+        tieneInternet: false,
+        ubicacionCapturada: false,
+        ubicacionRequerida: false,
+        mensaje: 'Error: ${e.toString()}',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
-  Future<void> _validarCamposDeshabilitadosConValores() async {
-    // Validar R
-    if (!_camposR && _tienenValoresR()) {
-      final confirmar = await _mostrarConfirmacionActivarR();
-      if (confirmar == true) {
-        setState(() => _camposR = true);
-        _calcularDiferencia();
-      } else if (confirmar == false) {
-        _registroRenCero();
-      } else {
-        // Usuario canceló
-        throw Exception('Envío cancelado por usuario');
-      }
+  // Método auxiliar para construir datos del reporte
+  Future<Map<String, dynamic>> _construirDatosReporte() async {
+    final userData = await AuthService().getCurrentUser();
+
+    // --- Lógica condicional para 'R' ---
+    String rInicialCompleto;
+    String rFinalCompleto;
+    int registroR;
+
+    if (!_camposR) {
+      rInicialCompleto = _buildFormatoR('0000', '0');
+      rFinalCompleto = _buildFormatoR('0000', '0');
+      registroR = 0;
+    } else {
+      final rInicial4Digitos = _rInicialiController.text.isNotEmpty
+          ? _rInicialiController.text.padLeft(4, '0')
+          : '0000';
+      final rInicialDigito = _rInicialDigitoFinalController.text.isNotEmpty
+          ? _rInicialDigitoFinalController.text
+          : '0';
+
+      final rFinal4Digitos = _rFinalController.text.isNotEmpty
+          ? _rFinalController.text.padLeft(4, '0')
+          : '0000';
+      final rFinalDigito = _rFinalDigitoFinalController.text.isNotEmpty
+          ? _rFinalDigitoFinalController.text
+          : '0';
+
+      rInicialCompleto = _buildFormatoR(rInicial4Digitos, rInicialDigito);
+      rFinalCompleto = _buildFormatoR(rFinal4Digitos, rFinalDigito);
+      registroR = diferenciaR;
     }
 
-    // Validar C
-    if (!_camposC && _tienenValoresC()) {
-      final confirmar = await _mostrarConfirmacionActivarC();
-      if (confirmar == true) {
-        setState(() => _camposC = true);
-        _calcularDiferencia();
-      } else if (confirmar == false) {
-        _registroCenCero();
-      } else {
-        // Usuario canceló
-        throw Exception('Envío cancelado por usuario');
-      }
+    // --- Lógica condicional para 'C' ---
+    String cInicialCompleto;
+    String cFinalCompleto;
+    int registroC;
+
+    if (!_camposC) {
+      cInicialCompleto = _buildFormatoC('0000', '0');
+      cFinalCompleto = _buildFormatoC('0000', '0');
+      registroC = 0;
+    } else {
+      cInicialCompleto = _buildFormatoC(
+        _cInicialiController.text.padLeft(4, '0'),
+        _cInicialDigitoFinalController.text.isEmpty
+            ? '0'
+            : _cInicialDigitoFinalController.text,
+      );
+      cFinalCompleto = _buildFormatoC(
+        _cFinalController.text.padLeft(4, '0'),
+        _cFinalDigitoFinalController.text.isEmpty
+            ? '0'
+            : _cFinalDigitoFinalController.text,
+      );
+      registroC = diferenciaC;
     }
+
+    return {
+      'fecha_reporte': _fechaController.text,
+      'contador_inicial_c': cInicialCompleto,
+      'contador_final_c': cFinalCompleto,
+      'registro_c': registroC,
+      'contador_inicial_r': rInicialCompleto,
+      'contador_final_r': rFinalCompleto,
+      'registro_r': registroR,
+      'incidencias': _incidenciasController.text,
+      'observaciones': _observacionesController.text,
+      'operador': userData!.operador!.idOperador,
+      'estacion': userData.operador!.idEstacion,
+      'centro_empadronamiento': _puntoEmpadronamientoId,
+      'estado': 'pendiente',
+      'sincronizar': true,
+      'observacionC': _cObservacionesController.text,
+      'observacionR': _rObservacionesController.text,
+      'saltosenC': int.tryParse(_cSaltosController.text) ?? 0,
+      'saltosenR': int.tryParse(_rSaltosController.text) ?? 0,
+    };
+  }
+
+  // Método auxiliar para crear ReporteDiarioLocal
+  ReporteDiarioLocal _crearReporteLocal(Map<String, dynamic> reporteData) {
+    final userData = _userData!.operador!;
+
+    return ReporteDiarioLocal(
+      id: null,
+      idServer: null,
+      contadorInicialR: reporteData['contador_inicial_r'],
+      contadorFinalR: reporteData['contador_final_r'],
+      saltosenR: reporteData['saltosenR'] ?? 0,
+      contadorR: reporteData['registro_r'].toString(),
+      contadorInicialC: reporteData['contador_inicial_c'],
+      contadorFinalC: reporteData['contador_final_c'],
+      saltosenC: reporteData['saltosenC'] ?? 0,
+      contadorC: reporteData['registro_c'].toString(),
+      fechaReporte: reporteData['fecha_reporte'],
+      observaciones: reporteData['observaciones'],
+      incidencias: reporteData['incidencias'],
+      estado: 'pendiente',
+      idOperador: userData.idOperador,
+      estacionId: userData.idEstacion,
+      nroEstacion: userData.nroEstacion?.toString(),
+      fechaCreacion: DateTime.now(),
+      fechaSincronizacion: null,
+      observacionC: reporteData['observacionC'],
+      observacionR: reporteData['observacionR'],
+      centroEmpadronamiento: reporteData['centro_empadronamiento'],
+    );
   }
 
   bool _tienenValoresR() {
@@ -2247,55 +1889,13 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
         _cFinalDigitoFinalController.text.isNotEmpty;
   }
 
-  Future<bool?> _mostrarConfirmacionActivarR() async {
-    return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Valores R detectados'),
-          content: const Text(
-            'Has ingresado valores en los campos R. '
-            '¿Quieres activar la sección de Registros Nuevos (R) '
-            'o limpiar los valores?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('ACTIVAR R'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('LIMPIAR VALORES'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(null),
-              child: const Text('CANCELAR'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ✅ NUEVO: Método para verificar conexión
-  Future<bool> _verificarConexionInternet() async {
-    try {
-      final result = await Connectivity().checkConnectivity();
-      return result != ConnectivityResult.none;
-    } catch (e) {
-      print('⚠️ Error verificando conexión: $e');
-      return false;
-    }
-  }
-
-  // ✅ ACTUALIZAR: _mostrarAlertaResultado con parámetro tieneInternet
-  Future<void> _mostrarAlertaResultado({
+  // Método corregido para mostrar resultado
+  Future<void> _mostrarAlertaResultadoCorregido({
     required bool exito,
     required bool guardadoLocal,
+    required bool tieneInternet,
     required bool ubicacionCapturada,
     required bool ubicacionRequerida,
-    required bool tieneInternet,
     String? mensaje,
   }) async {
     String titulo;
@@ -2307,17 +1907,16 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
       if (!tieneInternet) {
         titulo = '📱 Reporte Guardado Localmente';
         contenido =
-            'El reporte se guardó en el dispositivo.\n\n'
+        'El reporte se guardó en el dispositivo.\n\n'
             'Se sincronizará automáticamente cuando haya conexión a internet.';
         colorFondo = Colors.orange.shade50;
         icono = Icons.save;
       } else if (guardadoLocal) {
-        titulo = '⏳ Procesando Sincronización';
+        titulo = '✅ Reporte Enviado y Guardado';
         contenido =
-            'El reporte se está sincronizando con el servidor.\n\n'
-            'Por favor, espera...';
-        colorFondo = Colors.blue.shade50;
-        icono = Icons.cloud_sync;
+        'El reporte ha sido enviado al servidor y guardado localmente.';
+        colorFondo = Colors.green.shade50;
+        icono = Icons.check_circle;
       } else {
         titulo = '✅ Reporte Enviado';
         contenido = 'El reporte ha sido enviado correctamente al servidor.';
@@ -2384,8 +1983,297 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     );
   }
 
-  Future<void> _mostrarDialogoConfirmacionR() async {
-    await showDialog(
+  // ✅ NUEVO: Método para verificar conexión
+  Future<bool> _verificarConexionInternet() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      return result != ConnectivityResult.none;
+    } catch (e) {
+      print('⚠️ Error verificando conexión: $e');
+      return false;
+    }
+  }
+
+  // ✅ MANTENIDOS: Métodos de diálogo para confirmar activación de secciones
+  // Future<bool?> _mostrarDialogoConfirmacionR() async {
+  //   return await showDialog<bool>(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (BuildContext context) {
+  //       return AlertDialog(
+  //         title: const Text(
+  //           '⚠️ Valores R Ingresados',
+  //           style: TextStyle(color: Colors.orange),
+  //         ),
+  //         content: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             const Text(
+  //               'Has ingresado valores en los campos R, '
+  //                   'pero la sección de Registros Nuevos está deshabilitada.',
+  //             ),
+  //             const SizedBox(height: 12),
+  //             if (_rInicialiController.text.isNotEmpty)
+  //               Text(
+  //                 '• R Inicial: ${_rInicialiController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             if (_rFinalController.text.isNotEmpty)
+  //               Text(
+  //                 '• R Final: ${_rFinalController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             const SizedBox(height: 16),
+  //             const Text(
+  //               '¿Qué deseas hacer?',
+  //               style: TextStyle(fontWeight: FontWeight.bold),
+  //             ),
+  //           ],
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () => Navigator.of(context).pop(true),
+  //             child: const Text(
+  //               'ACTIVAR SECCIÓN R',
+  //               style: TextStyle(color: Colors.blue),
+  //             ),
+  //           ),
+  //           TextButton(
+  //             onPressed: () => Navigator.of(context).pop(false),
+  //             child: const Text(
+  //               'LIMPIAR VALORES R',
+  //               style: TextStyle(color: Colors.grey),
+  //             ),
+  //           ),
+  //           TextButton(
+  //             onPressed: () => Navigator.of(context).pop(null),
+  //             child: const Text('CANCELAR'),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
+
+  // Future<bool?> _mostrarDialogoConfirmacionC() async {
+  //   return await showDialog<bool>(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (BuildContext context) {
+  //       return AlertDialog(
+  //         title: const Text(
+  //           '⚠️ Valores C Ingresados',
+  //           style: TextStyle(color: Colors.orange),
+  //         ),
+  //         content: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             const Text(
+  //               'Has ingresado valores en los campos C, '
+  //                   'pero la sección de Cambio de Domicilio está deshabilitada.',
+  //             ),
+  //             const SizedBox(height: 12),
+  //             if (_cInicialiController.text.isNotEmpty)
+  //               Text(
+  //                 '• C Inicial: ${_cInicialiController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             if (_cFinalController.text.isNotEmpty)
+  //               Text(
+  //                 '• C Final: ${_cFinalController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             const SizedBox(height: 16),
+  //             const Text(
+  //               '¿Qué deseas hacer?',
+  //               style: TextStyle(fontWeight: FontWeight.bold),
+  //             ),
+  //           ],
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () => Navigator.of(context).pop(true),
+  //             child: const Text(
+  //               'ACTIVAR SECCIÓN C',
+  //               style: TextStyle(color: Colors.blue),
+  //             ),
+  //           ),
+  //           TextButton(
+  //             onPressed: () => Navigator.of(context).pop(false),
+  //             child: const Text(
+  //               'LIMPIAR VALORES C',
+  //               style: TextStyle(color: Colors.grey),
+  //             ),
+  //           ),
+  //           TextButton(
+  //             onPressed: () => Navigator.of(context).pop(null),
+  //             child: const Text('CANCELAR'),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
+
+  // lib/views/operador/reporte_diario_view.dart
+
+  // ... dentro de la clase _ReporteDiarioViewState
+
+  // ✅ CORRECCIÓN: Envolver los botones en un `Wrap` para evitar overflow
+  // Future<bool?> _mostrarDialogoConfirmacionR() async {
+  //   return await showDialog<bool>(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (BuildContext context) {
+  //       return AlertDialog(
+  //         title: const Text(
+  //           '⚠️ Valores R Ingresados',
+  //           style: TextStyle(color: Colors.orange),
+  //         ),
+  //         content: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             const Text(
+  //               'Has ingresado valores en los campos R, '
+  //                   'pero la sección de Registros Nuevos está deshabilitada.',
+  //             ),
+  //             const SizedBox(height: 12),
+  //             if (_rInicialiController.text.isNotEmpty)
+  //               Text(
+  //                 '• R Inicial: ${_rInicialiController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             if (_rFinalController.text.isNotEmpty)
+  //               Text(
+  //                 '• R Final: ${_rFinalController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             const SizedBox(height: 16),
+  //             const Text(
+  //               '¿Qué deseas hacer?',
+  //               style: TextStyle(fontWeight: FontWeight.bold),
+  //             ),
+  //           ],
+  //         ),
+  //         actions: [
+  //           // ✅ CORRECCIÓN APLICADA AQUÍ
+  //           Wrap(
+  //             alignment: WrapAlignment.end, // Alinea los botones a la derecha
+  //             spacing: 8.0, // Espacio horizontal entre botones
+  //             children: [
+  //               TextButton(
+  //                 onPressed: () => Navigator.of(context).pop(false),
+  //                 child: const Text(
+  //                   'LIMPIAR VALORES', // Texto acortado
+  //                   style: TextStyle(color: Colors.grey),
+  //                 ),
+  //               ),
+  //               TextButton(
+  //                 onPressed: () => Navigator.of(context).pop(null),
+  //                 child: const Text('CANCELAR'),
+  //               ),
+  //               ElevatedButton( // Usar un botón más prominente para la acción principal
+  //                 onPressed: () => Navigator.of(context).pop(true),
+  //                 child: const Text('ACTIVAR SECCIÓN'), // Texto acortado
+  //                 style: ElevatedButton.styleFrom(
+  //                   backgroundColor: Colors.blue,
+  //                   foregroundColor: Colors.white,
+  //                 ),
+  //               ),
+  //             ],
+  //           )
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
+
+  // ✅ CORRECCIÓN: Envolver los botones en un `Wrap` para evitar overflow
+
+  // ✅ OPCIÓN 1: Usar ScrollableActionsDelegate (RECOMENDADO)
+
+
+  // Future<bool?> _mostrarDialogoConfirmacionC() async {
+  //   return await showDialog<bool>(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (BuildContext context) {
+  //       return AlertDialog(
+  //         title: const Text(
+  //           '⚠️ Valores C Ingresados',
+  //           style: TextStyle(color: Colors.orange),
+  //         ),
+  //         content: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             const Text(
+  //               'Has ingresado valores en los campos C, '
+  //                   'pero la sección de Cambio de Domicilio está deshabilitada.',
+  //             ),
+  //             const SizedBox(height: 12),
+  //             if (_cInicialiController.text.isNotEmpty)
+  //               Text(
+  //                 '• C Inicial: ${_cInicialiController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             if (_cFinalController.text.isNotEmpty)
+  //               Text(
+  //                 '• C Final: ${_cFinalController.text}',
+  //                 style: const TextStyle(fontWeight: FontWeight.w500),
+  //               ),
+  //             const SizedBox(height: 16),
+  //             const Text(
+  //               '¿Qué deseas hacer?',
+  //               style: TextStyle(fontWeight: FontWeight.bold),
+  //             ),
+  //           ],
+  //         ),
+  //         actionsPadding: const EdgeInsets.all(12),
+  //         actions: [
+  //           SizedBox(
+  //             width: double.infinity,
+  //             child: Column(
+  //               mainAxisSize: MainAxisSize.min,
+  //               crossAxisAlignment: CrossAxisAlignment.stretch,
+  //               children: [
+  //                 ElevatedButton(
+  //                   onPressed: () => Navigator.of(context).pop(true),
+  //                   style: ElevatedButton.styleFrom(
+  //                     backgroundColor: Colors.orange,
+  //                     padding: const EdgeInsets.symmetric(vertical: 12),
+  //                   ),
+  //                   child: const Text(
+  //                     'ACTIVAR SECCIÓN C',
+  //                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+  //                   ),
+  //                 ),
+  //                 const SizedBox(height: 8),
+  //                 OutlinedButton(
+  //                   onPressed: () => Navigator.of(context).pop(false),
+  //                   child: const Text('LIMPIAR VALORES'),
+  //                 ),
+  //                 const SizedBox(height: 8),
+  //                 TextButton(
+  //                   onPressed: () => Navigator.of(context).pop(null),
+  //                   child: const Text('CANCELAR'),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
+
+
+  // ✅ OPCIÓN 1: Usar ScrollableActionsDelegate (RECOMENDADO)
+  Future<bool?> _mostrarDialogoConfirmacionR() async {
+    return await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
@@ -2400,17 +2288,19 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
             children: [
               const Text(
                 'Has ingresado valores en los campos R, '
-                'pero la sección de Registros Nuevos está deshabilitada.',
+                    'pero la sección de Registros Nuevos está deshabilitada.',
               ),
               const SizedBox(height: 12),
-              Text(
-                '• R Inicial: ${_rInicialiController.text}',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              Text(
-                '• R Final: ${_rFinalController.text}',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
+              if (_rInicialiController.text.isNotEmpty)
+                Text(
+                  '• R Inicial: ${_rInicialiController.text}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              if (_rFinalController.text.isNotEmpty)
+                Text(
+                  '• R Final: ${_rFinalController.text}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
               const SizedBox(height: 16),
               const Text(
                 '¿Qué deseas hacer?',
@@ -2418,40 +2308,37 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
               ),
             ],
           ),
+          actionsPadding: const EdgeInsets.all(12),
           actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Opción 1: Activar sección R y usar los valores
-                setState(() {
-                  _camposR = true;
-                });
-                // Recalcular diferencia
-                _calcularDiferencia();
-                // Continuar con el envío
-                _continuarEnvioReporte();
-              },
-              child: const Text(
-                'ACTIVAR SECCIÓN R',
-                style: TextStyle(color: Colors.blue),
+            SizedBox(
+              width: double.infinity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text(
+                      'ACTIVAR SECC. R',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('LIMPIAR VALORES'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(null),
+                    child: const Text('CANCELAR'),
+                  ),
+                ],
               ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Opción 2: Limpiar valores R y enviar ceros
-                _registroRenCero();
-                // Continuar con el envío
-                _continuarEnvioReporte();
-              },
-              child: const Text(
-                'LIMPIAR VALORES R',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('CANCELAR'),
             ),
           ],
         );
@@ -2459,241 +2346,8 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
     );
   }
 
-  Future<void> _continuarEnvioReporte() async {
-    // Agregar async
-    if (!_gpsActivado && _ubicacionRequerida) {
-      _mostrarDialogoActivacionGPS();
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      if (_userData?.operador == null) {
-        throw Exception('Datos de operador no disponibles');
-      }
-
-      // 2. Verificar conexión a internet
-      final tieneInternet = await _verificarConexionInternet();
-
-      // 3. Capturar ubicación si es necesario
-      bool ubicacionCapturada = false;
-      if (_gpsActivado && _ubicacionRequerida) {
-        ubicacionCapturada = await _capturarGeolocalizacionAlEnviar();
-      }
-
-      final ahora = DateTime.now();
-      final fechaHora = ahora.toIso8601String();
-
-      // ⚠️ DEBUG: Verificar estado de campos R antes de construir valores
-      print('🔍 DEBUG ANTES DE ENVIAR:');
-      print('   _camposR: $_camposR');
-      print('   R Inicial Controller: ${_rInicialiController.text}');
-      print('   R Final Controller: ${_rFinalController.text}');
-      print('   R Inicial Digito: ${_rInicialDigitoFinalController.text}');
-      print('   R Final Digito: ${_rFinalDigitoFinalController.text}');
-
-      // --- Lógica condicional para 'R' ---
-      String rInicialCompleto;
-      String rFinalCompleto;
-      int registroR;
-
-      if (!_camposR) {
-        print('ℹ️ Campos R deshabilitados. Enviando valores en cero.');
-        rInicialCompleto = _buildFormatoR('0000', '0');
-        rFinalCompleto = _buildFormatoR('0000', '0');
-        registroR = 0;
-      } else {
-        // ✅ Asegurar que tenemos valores válidos
-        final rInicial4Digitos = _rInicialiController.text.isNotEmpty
-            ? _rInicialiController.text.padLeft(4, '0')
-            : '0000';
-        final rInicialDigito = _rInicialDigitoFinalController.text.isNotEmpty
-            ? _rInicialDigitoFinalController.text
-            : '0';
-
-        final rFinal4Digitos = _rFinalController.text.isNotEmpty
-            ? _rFinalController.text.padLeft(4, '0')
-            : '0000';
-        final rFinalDigito = _rFinalDigitoFinalController.text.isNotEmpty
-            ? _rFinalDigitoFinalController.text
-            : '0';
-
-        rInicialCompleto = _buildFormatoR(rInicial4Digitos, rInicialDigito);
-        rFinalCompleto = _buildFormatoR(rFinal4Digitos, rFinalDigito);
-        registroR = diferenciaR;
-
-        print('✅ Campos R habilitados - Usando valores reales:');
-        print('   R Inicial: $rInicialCompleto');
-        print('   R Final: $rFinalCompleto');
-      }
-
-      // --- Lógica condicional para 'C' ---
-      String cInicialCompleto;
-      String cFinalCompleto;
-      int registroC;
-
-      if (!_camposC) {
-        print('ℹ️ Campos C deshabilitados. Enviando valores en cero.');
-        cInicialCompleto = _buildFormatoC('0000', '0');
-        cFinalCompleto = _buildFormatoC('0000', '0');
-        registroC = 0;
-      } else {
-        cInicialCompleto = _buildFormatoC(
-          _cInicialiController.text.padLeft(4, '0'),
-          _cInicialDigitoFinalController.text.isEmpty
-              ? '0'
-              : _cInicialDigitoFinalController.text,
-        );
-        cFinalCompleto = _buildFormatoC(
-          _cFinalController.text.padLeft(4, '0'),
-          _cFinalDigitoFinalController.text.isEmpty
-              ? '0'
-              : _cFinalDigitoFinalController.text,
-        );
-        registroC = diferenciaC;
-      }
-
-      // 4. Construir mapa de datos para el reporte
-      final reporteData = {
-        'fecha_reporte': _fechaController.text,
-        'contador_inicial_c': cInicialCompleto,
-        'contador_final_c': cFinalCompleto,
-        'registro_c': registroC,
-        'contador_inicial_r': rInicialCompleto,
-        'contador_final_r': rFinalCompleto,
-        'registro_r': registroR,
-        'incidencias': _incidenciasController.text,
-        'observaciones': _observacionesController.text,
-        'operador': _userData!.operador!.idOperador,
-        'estacion': _userData!.operador!.idEstacion,
-        'centro_empadronamiento': _puntoEmpadronamientoId,
-        'estado': 'ENVIO REPORTE',
-        'sincronizar': true,
-        'observacionC': _cObservacionesController.text,
-        'observacionR': _rObservacionesController.text,
-        'saltosenC': int.tryParse(_cSaltosController.text) ?? 0,
-        'saltosenR': int.tryParse(_rSaltosController.text) ?? 0,
-      };
-
-      // 5. Construir mapa de datos para el despliegue/geolocalización
-      final despliegueData = {
-        'destino':
-            'REPORTE DIARIO - ${_userData!.operador!.nroEstacion ?? "Estación"}',
-        'latitud': _latitud ?? (_ubicacionRequerida ? '0.0' : null),
-        'longitud': _longitud ?? (_ubicacionRequerida ? '0.0' : null),
-        'descripcion_reporte': null,
-        'estado': 'REPORTE ENVIADO',
-        'sincronizar': true,
-        'observaciones':
-            'Reporte diario: ${_observacionesController.text.isNotEmpty ? _observacionesController.text : "Sin observaciones"}',
-        'incidencias': _ubicacionRequerida
-            ? (ubicacionCapturada
-                  ? 'Ubicación capturada correctamente'
-                  : 'No se pudo capturar ubicación')
-            : 'Ubicación no requerida para este reporte',
-        'fecha_hora': fechaHora,
-        'operador': _userData!.operador!.idOperador,
-        'sincronizado': false,
-      };
-
-      print('📤 Enviando reporte con formatos:');
-      print('📍 R Inicial: $rInicialCompleto');
-      print('📍 R Final: $rFinalCompleto');
-      print('📍 C Inicial: $cInicialCompleto');
-      print('📍 C Final: $cFinalCompleto');
-
-      // 6. Preparar ApiService si hay conexión
-      final authService = AuthService();
-      final accessToken = await authService.getAccessToken();
-      ApiService? apiService;
-      if (tieneInternet && accessToken != null) {
-        apiService = ApiService(accessToken: accessToken);
-      }
-
-      // 7. Guardar los datos localmente
-      final result = await _syncService.saveReporteGeolocalizacion(
-        reporteData: reporteData,
-        despliegueData: despliegueData,
-      );
-
-      // 8. Si hay conexión, intentar sincronizar inmediatamente
-      if (tieneInternet && apiService != null) {
-        print('🌐 Conexión disponible - sincronizando inmediatamente');
-        await _syncService.sincronizarReportes(apiService: apiService);
-      }
-
-      if (!mounted) return;
-
-      // 9. Mostrar resultado al usuario
-      await _mostrarAlertaResultado(
-        exito: result['success'],
-        guardadoLocal: result['saved_locally'] == true,
-        ubicacionCapturada: ubicacionCapturada,
-        ubicacionRequerida: _ubicacionRequerida,
-        tieneInternet: tieneInternet,
-        mensaje: result['message'],
-      );
-
-      // 10. Limpiar formulario si todo fue exitoso
-      if (result['success']) {
-        _cleanFormulario();
-        setState(() {
-          _latitud = null;
-          _longitud = null;
-          _coordenadas = 'No capturadas';
-          _locationCaptured = false;
-          _ubicacionRequerida = true;
-          _camposR = false;
-          _camposC = false;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      await _mostrarAlertaError('Error al enviar reporte: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  // Agrega estos métodos a tu clase _ReporteDiarioViewState:
-
-  Future<bool?> _mostrarConfirmacionActivarC() async {
+  Future<bool?> _mostrarDialogoConfirmacionC() async {
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Valores C detectados'),
-          content: const Text(
-            'Has ingresado valores en los campos C. '
-            '¿Quieres activar la sección de Cambio de Domicilio (C) '
-            'o limpiar los valores?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('ACTIVAR C'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('LIMPIAR VALORES'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(null),
-              child: const Text('CANCELAR'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // También necesitas este método adicional para C:
-  Future<void> _mostrarDialogoConfirmacionC() async {
-    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
@@ -2708,17 +2362,19 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
             children: [
               const Text(
                 'Has ingresado valores en los campos C, '
-                'pero la sección de Cambio de Domicilio está deshabilitada.',
+                    'pero la sección de Cambio de Domicilio está deshabilitada.',
               ),
               const SizedBox(height: 12),
-              Text(
-                '• C Inicial: ${_cInicialiController.text}',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              Text(
-                '• C Final: ${_cFinalController.text}',
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
+              if (_cInicialiController.text.isNotEmpty)
+                Text(
+                  '• C Inicial: ${_cInicialiController.text}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              if (_cFinalController.text.isNotEmpty)
+                Text(
+                  '• C Final: ${_cFinalController.text}',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
               const SizedBox(height: 16),
               const Text(
                 '¿Qué deseas hacer?',
@@ -2726,44 +2382,42 @@ class _ReporteDiarioViewState extends State<ReporteDiarioView> {
               ),
             ],
           ),
+          actionsPadding: const EdgeInsets.all(12),
           actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Opción 1: Activar sección C y usar los valores
-                setState(() {
-                  _camposC = true;
-                });
-                // Recalcular diferencia
-                _calcularDiferencia();
-                // Continuar con el envío
-                _continuarEnvioReporte();
-              },
-              child: const Text(
-                'ACTIVAR SECCIÓN C',
-                style: TextStyle(color: Colors.blue),
+            SizedBox(
+              width: double.infinity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text(
+                      'ACTIVAR SECC. C',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('LIMPIAR VALORES'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(null),
+                    child: const Text('CANCELAR'),
+                  ),
+                ],
               ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Opción 2: Limpiar valores C y enviar ceros
-                _registroCenCero();
-                // Continuar con el envío
-                _continuarEnvioReporte();
-              },
-              child: const Text(
-                'LIMPIAR VALORES C',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('CANCELAR'),
             ),
           ],
         );
       },
     );
   }
+
 }

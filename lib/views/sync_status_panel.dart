@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/reporte_sync_service.dart';
+import '../models/sync_models.dart';
 
 class SyncStatusPanel extends StatefulWidget {
   final VoidCallback? onSyncPressed;

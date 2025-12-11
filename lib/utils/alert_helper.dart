@@ -291,7 +291,7 @@ class AlertHelper {
         return AlertDialog(
           title: const Row(
             children: [
-              Icon(Icons.receipt, color: Colors.blue),
+              // Icon(Icons.receipt, color: Colors.blue),
               SizedBox(width: 8),
               Text(
                 'Activar Registros R',
@@ -357,7 +357,7 @@ class AlertHelper {
         return AlertDialog(
           title: const Row(
             children: [
-              Icon(Icons.home_work, color: Colors.orange),
+              // Icon(Icons.home_work, color: Colors.orange),
               SizedBox(width: 8),
               Text(
                 'Activar Registros C',

@@ -64,48 +64,6 @@ class DatabaseService {
     print('✅ Base de datos creada exitosamente');
   }
 
-  /// Migrar base de datos
-  Future<void> _upgradeDatabase(
-      Database db,
-      int oldVersion,
-      int newVersion,
-      ) async {
-    print('🔄 Migrando BD de versión $oldVersion a $newVersion...');
-
-    for (int version = oldVersion + 1; version <= newVersion; version++) {
-      switch (version) {
-        case 2:
-          await _upgradeToVersion2(db);
-          break;
-        case 3:
-          await _upgradeToVersion3(db);
-          break;
-        case 4:
-          await _upgradeToVersion4(db);
-          break;
-        case 5:
-          await _upgradeToVersion5(db);
-          break;
-        case 6:
-          await _upgradeToVersion6(db);
-          break;
-        case 7:
-          await _upgradeToVersion7(db);
-          break;
-        case 8:
-          await _upgradeToVersion8(db);
-          break;
-        case 9:
-          await _upgradeToVersion9(db);
-          break;
-        case 10:
-          await _migracionForzadaV10(db);
-          break;
-      }
-    }
-
-    print('✅ Migración completada a versión $newVersion');
-  }
 
   /// ===================================================================
   /// MÉTODOS DE CREACIÓN DE TABLAS
@@ -1211,6 +1169,199 @@ class DatabaseService {
       }
 
       return -1;
+    }
+  }
+
+  // Agrega esta migración a tu método _upgradeDatabase
+  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+    print('🔄 Migrando BD de versión $oldVersion a $newVersion...');
+
+    for (int version = oldVersion + 1; version <= newVersion; version++) {
+      switch (version) {
+        case 2:
+          await _upgradeToVersion2(db);
+          break;
+        case 3:
+          await _upgradeToVersion3(db);
+          break;
+        case 4:
+          await _upgradeToVersion4(db);
+          break;
+        case 5:
+          await _upgradeToVersion5(db);
+          break;
+        case 6:
+          await _upgradeToVersion6(db);
+          break;
+        case 7:
+          await _upgradeToVersion7(db);
+          break;
+        case 8:
+          await _upgradeToVersion8(db);
+          break;
+        case 9:
+          await _upgradeToVersion9(db);
+          break;
+        case 10:
+          await _migracionForzadaV10(db);
+          break;
+        case 11:
+          await _migracionAgregarIdOperadorV11(db); // <-- NUEVA MIGRACIÓN
+          break;
+      }
+    }
+
+    print('✅ Migración completada a versión $newVersion');
+  }
+
+// Agrega este método nuevo
+  Future<void> _migracionAgregarIdOperadorV11(Database db) async {
+    print('🔧 Migrando a versión 11: Agregar id_operador a reportes_diarios');
+
+    try {
+      // Paso 1: Verificar si ya existe la columna
+      final columns = await db.rawQuery('PRAGMA table_info(reportes_diarios)');
+      final columnNames = columns.map((col) => col['name'] as String).toList();
+
+      print('📋 Columnas actuales de reportes_diarios: $columnNames');
+
+      // Paso 2: Agregar columna id_operador si no existe
+      if (!columnNames.contains('id_operador')) {
+        print('➕ Agregando columna id_operador a reportes_diarios...');
+
+        // Primero, intentar agregar la columna
+        try {
+          await db.execute('ALTER TABLE reportes_diarios ADD COLUMN id_operador INTEGER');
+        } catch (e) {
+          print('⚠️ No se pudo agregar columna directamente: $e');
+
+          // Si falla, recrear la tabla con la nueva columna
+          await _recrearTablaReportesConIdOperador(db);
+        }
+
+        // Paso 3: Asignar valores por defecto
+        print('🔄 Asignando valores por defecto a id_operador...');
+        await db.execute('''
+        UPDATE reportes_diarios 
+        SET id_operador = operador 
+        WHERE id_operador IS NULL
+      ''');
+
+        // Si operador no es un número, asignar valor por defecto
+        await db.execute('''
+        UPDATE reportes_diarios 
+        SET id_operador = 1 
+        WHERE id_operador IS NULL OR id_operador = 0
+      ''');
+      }
+
+      // Paso 4: Verificar si existe el índice idx_operador
+      final indexes = await db.rawQuery("SELECT * FROM sqlite_master WHERE type='index' AND tbl_name='reportes_diarios'");
+      final tieneIdxOperador = indexes.any((index) => (index['name'] as String?) == 'idx_operador');
+
+      // Paso 5: Crear índice idx_operador solo si la columna existe y no hay índice
+      if (!tieneIdxOperador) {
+        try {
+          print('📊 Creando índice idx_operador...');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_operador ON reportes_diarios(id_operador)');
+        } catch (e) {
+          print('⚠️ No se pudo crear índice idx_operador: $e');
+          // Si falla, podría ser que la columna no existe o tiene otro nombre
+        }
+      }
+
+      print('✅ Migración V11 completada');
+    } catch (e) {
+      print('❌ Error en migración V11: $e');
+      // Continuar sin fallar completamente
+    }
+  }
+
+// Método para recrear tabla con id_operador
+  Future<void> _recrearTablaReportesConIdOperador(Database db) async {
+    print('🔨 Recreando tabla reportes_diarios con id_operador...');
+
+    try {
+      // 1. Crear tabla temporal con todos los datos
+      await db.execute('''
+      CREATE TABLE reportes_diarios_temp AS 
+      SELECT * FROM reportes_diarios
+    ''');
+
+      // 2. Eliminar tabla original
+      await db.execute('DROP TABLE reportes_diarios');
+
+      // 3. Crear nueva tabla con id_operador
+      await db.execute('''
+      CREATE TABLE reportes_diarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_server INTEGER,
+        fecha_reporte TEXT NOT NULL,
+        contador_inicial_c TEXT NOT NULL,
+        contador_final_c TEXT NOT NULL,
+        registro_c INTEGER NOT NULL,
+        contador_inicial_r TEXT NOT NULL,
+        contador_final_r TEXT NOT NULL,
+        registro_r INTEGER NOT NULL,
+        incidencias TEXT,
+        observaciones TEXT,
+        operador INTEGER NOT NULL,
+        id_operador INTEGER NOT NULL DEFAULT 1, -- NUEVA COLUMNA
+        estacion INTEGER NOT NULL,
+        centro_empadronamiento_id INTEGER,
+        estado TEXT DEFAULT 'ENVIO REPORTE',
+        sincronizar INTEGER DEFAULT 1,
+        synced INTEGER DEFAULT 0,
+        observacionC TEXT,
+        observacionR TEXT,
+        saltosenC INTEGER DEFAULT 0,
+        saltosenR INTEGER DEFAULT 0,
+        fecha_creacion_local TEXT NOT NULL,
+        intentos INTEGER DEFAULT 0,
+        ultima_tentativa TEXT,
+        updated_at TEXT
+      )
+    ''');
+
+      // 4. Copiar datos preservando relaciones
+      await db.execute('''
+      INSERT INTO reportes_diarios (
+        id, fecha_reporte, contador_inicial_c, contador_final_c, registro_c,
+        contador_inicial_r, contador_final_r, registro_r, incidencias, observaciones,
+        operador, id_operador, estacion, centro_empadronamiento_id, estado,
+        sincronizar, synced, observacionC, observacionR, saltosenC, saltosenR,
+        fecha_creacion_local, intentos, ultima_tentativa, updated_at
+      )
+      SELECT 
+        id, fecha_reporte, contador_inicial_c, contador_final_c, registro_c,
+        contador_inicial_r, contador_final_r, registro_r, incidencias, observaciones,
+        operador, 
+        CASE 
+          WHEN operador IS NULL THEN 1
+          WHEN operador = 0 THEN 1
+          ELSE operador
+        END as id_operador,
+        estacion, centro_empadronamiento_id, estado,
+        sincronizar, synced, observacionC, observacionR, saltosenC, saltosenR,
+        fecha_creacion_local, intentos, ultima_tentativa, updated_at
+      FROM reportes_diarios_temp
+    ''');
+
+      // 5. Eliminar tabla temporal
+      await db.execute('DROP TABLE reportes_diarios_temp');
+
+      print('✅ Tabla reportes_diarios recreada con id_operador');
+    } catch (e) {
+      print('❌ Error recreando tabla: $e');
+      // Si falla, restaurar tabla original
+      try {
+        await db.execute('DROP TABLE IF EXISTS reportes_diarios');
+        await _createTableReportesDiarios(db);
+        await db.execute('INSERT INTO reportes_diarios SELECT * FROM reportes_diarios_temp');
+        await db.execute('DROP TABLE reportes_diarios_temp');
+      } catch (e2) {
+        print('❌ Error crítico restaurando tabla: $e2');
+      }
     }
   }
 }

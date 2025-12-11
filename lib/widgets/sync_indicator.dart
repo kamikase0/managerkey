@@ -1,67 +1,58 @@
-// lib/widgets/simple_sync_indicator.dart
+// lib/widgets/sync_indicator.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/reporte_sync_manager.dart';
+import '../models/sync_models.dart';
+import '../services/reporte_sync_service.dart';
+//import '../models/sync_state.dart'; // ✅ Importar SyncState
 
-class SimpleSyncIndicator extends StatelessWidget {
+
+
+
+class SyncIndicator extends StatelessWidget {
   final VoidCallback? onSync;
 
-  const SimpleSyncIndicator({Key? key, this.onSync}) : super(key: key);
+  const SyncIndicator({Key? key, this.onSync}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final syncManager = ReporteSyncManager();
+    final syncService = Provider.of<ReporteSyncService>(context, listen: false);
 
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _getSyncInfo(syncManager),
+    return FutureBuilder<SyncState>(
+      future: syncService.getSyncState(), // ✅ Ahora devuelve Future<SyncState>
       builder: (context, snapshot) {
+        // Estado de carga
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildLoadingIndicator();
         }
 
+        // Si hay error
+        if (snapshot.hasError) {
+          return _buildErrorIndicator(snapshot.error.toString());
+        }
+
+        // Si no hay datos
         if (!snapshot.hasData) {
           return _buildOfflineIndicator(context, onSync);
         }
 
-        final data = snapshot.data!;
-        final tieneConexion = data['tieneConexion'] as bool;
-        final pendientes = data['pendientes'] as int;
-        final isSyncing = data['isSyncing'] as bool;
+        final state = snapshot.data!;
 
-        if (isSyncing) {
+        // Verificar cada estado
+        if (state.isSyncing) {
           return _buildSyncingIndicator();
         }
 
-        if (!tieneConexion) {
+        if (state.offlineMode) {
           return _buildOfflineIndicator(context, onSync);
         }
 
-        if (pendientes > 0) {
-          return _buildPendingIndicator(context, pendientes, onSync);
+        if (state.hasPendingSync && state.pendingReports > 0) {
+          return _buildPendingIndicator(context, state, onSync);
         }
 
         return _buildSyncedIndicator();
       },
     );
-  }
-
-  Future<Map<String, dynamic>> _getSyncInfo(ReporteSyncManager syncManager) async {
-    try {
-      final tieneConexion = await syncManager.tieneConexionInternet();
-      final stats = await syncManager.obtenerEstadisticas();
-
-      return {
-        'tieneConexion': tieneConexion,
-        'pendientes': stats['pendientes'] ?? 0,
-        'isSyncing': false,
-      };
-    } catch (e) {
-      return {
-        'tieneConexion': false,
-        'pendientes': 0,
-        'isSyncing': false,
-      };
-    }
   }
 
   Widget _buildLoadingIndicator() {
@@ -147,7 +138,7 @@ class SimpleSyncIndicator extends StatelessWidget {
 
   Widget _buildPendingIndicator(
       BuildContext context,
-      int pendientes,
+      SyncState state,
       VoidCallback? onSync,
       ) {
     return GestureDetector(
@@ -165,7 +156,7 @@ class SimpleSyncIndicator extends StatelessWidget {
             Icon(Icons.sync, size: 16, color: Colors.orange.shade700),
             const SizedBox(width: 4),
             Text(
-              '$pendientes',
+              '${state.pendingReports}',
               style: TextStyle(
                 color: Colors.orange.shade700,
                 fontWeight: FontWeight.bold,
@@ -174,6 +165,32 @@ class SimpleSyncIndicator extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorIndicator(String error) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.red.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.red),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error, size: 16, color: Colors.red.shade700),
+          const SizedBox(width: 6),
+          Text(
+            'Error',
+            style: TextStyle(
+              color: Colors.red.shade700,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

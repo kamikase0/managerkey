@@ -1,102 +1,23 @@
+// lib/services/reporte_sync_service.dart
 import 'dart:async';
 import 'dart:convert';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
-import 'package:manager_key/services/connectivity_service.dart';
-import 'package:sqflite/sqflite.dart';
-
-import '../../config/enviroment.dart';
-import '../services/api_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:manager_key/services/sync_indicator.dart' hide SyncState;
+import '../config/enviroment.dart';
+import '../database/database_helper.dart';
+import '../models/reporte_diario_historial.dart';
+import '../models/sync_models.dart';
 import '../services/auth_service.dart';
 import '../services/database_service.dart';
+import '../database/database_helper.dart';
+import 'api_service.dart';
 
-// --- ENUMS Y CLASES DE MODELO ---
+class ReporteSyncService {
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final AuthService _authService = AuthService();
 
-enum SyncStatus { synced, syncing, pending, error }
-
-class SyncProgress {
-  final int actual;
-  final int total;
-  final int porcentaje;
-
-  SyncProgress({
-    required this.actual,
-    required this.total,
-    required this.porcentaje,
-  });
-}
-
-class SyncStats {
-  final int totalReportes;
-  final int sincronizados;
-  final int pendientes;
-
-  SyncStats({
-    required this.totalReportes,
-    required this.sincronizados,
-    required this.pendientes,
-  });
-
-  double get porcentajeSincronizado {
-    if (totalReportes == 0) return 100;
-    return (sincronizados / totalReportes * 100);
-  }
-}
-
-class SyncState {
-  final bool hasPendingSync;
-  final int pendingReports;
-  final int? pendingDeployments;
-  final bool offlineMode;
-  final bool isSyncing;
-  final bool success;
-
-  SyncState({
-    required this.hasPendingSync,
-    required this.pendingReports,
-    this.pendingDeployments,
-    this.offlineMode = false,
-    this.isSyncing = false,
-    this.success = true,
-  });
-}
-
-class SyncResult {
-  final bool success;
-  final String message;
-  final int syncedCount;
-  final int failedCount;
-
-  SyncResult({
-    required this.success,
-    required this.message,
-    this.syncedCount = 0,
-    this.failedCount = 0,
-  });
-}
-
-// --- SERVICIO DE SINCRONIZACIÓN ---
-
-class ReporteSyncService extends ChangeNotifier {
-  final DatabaseService _databaseService;
-  final ConnectivityService _connectivityService;
-  late ApiService _apiService;
-  String? _accessToken;
-
-  ReporteSyncService({
-    required DatabaseService databaseService,
-    required ConnectivityService connectivityService,
-  })  : _databaseService = databaseService,
-        _connectivityService = connectivityService {
-    print('✅ ReporteSyncService instanciado con sus dependencias.');
-    _initializeService();
-  }
-
-  // Variables de estado
-  final Connectivity _connectivity = Connectivity();
-  StreamSubscription? _connectivitySubscription;
-
+  // Streams para estado
   final StreamController<SyncStatus> _syncStatusController =
   StreamController<SyncStatus>.broadcast();
   final StreamController<int> _pendingCountController =
@@ -104,1133 +25,715 @@ class ReporteSyncService extends ChangeNotifier {
   final StreamController<SyncProgress> _syncProgressController =
   StreamController<SyncProgress>.broadcast();
 
-  bool _isInitialized = false;
-  bool _isSyncing = false;
-  Timer? _autoSyncTimer; // Esta es la variable correcta para el temporizador
-  bool _offlineMode = false;
-  bool _apiServiceReady = false;
-
-  // Streams públicos
   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
   Stream<int> get pendingCountStream => _pendingCountController.stream;
   Stream<SyncProgress> get syncProgressStream => _syncProgressController.stream;
 
-  // Inicialización del servicio
-  Future<void> _initializeService() async {
-    if (_isInitialized) return;
+  // Variable para controlar si está sincronizando
+  bool _isSyncing = false;
 
+  // Constructor
+  ReporteSyncService() {
+    // Inicializar estado
+    _syncStatusController.add(SyncStatus.synced);
+    _actualizarContadorPendientes();
+  }
+
+  // Verificar conexión
+  Future<bool> verificarConexion() async {
     try {
-      await _databaseService.ensureTablesCreated();
-      _isInitialized = true;
-      await _iniciarMonitorConexion();
-      _iniciarSincronizacionAutomatica();
-      await _actualizarConteoPendientes();
-      print('✅ ReporteSyncService inicializado correctamente');
+      final connectivity = Connectivity();
+      final result = await connectivity.checkConnectivity();
+      return result != ConnectivityResult.none;
     } catch (e) {
-      print('❌ Error inicializando ReporteSyncService: $e');
+      print('Error verificando conexión: $e');
+      return false;
     }
   }
 
-  Future<void> initialize({String? accessToken}) async {
+  // Enviar reporte individual al servidor
+  Future<Map<String, dynamic>> enviarReporteAlServidor(
+      Map<String, dynamic> reporteData) async {
     try {
-      if (accessToken != null && accessToken.isNotEmpty) {
-        _apiService = ApiService(accessToken: accessToken);
-        _apiServiceReady = true;
-        print('✅ ApiService inicializado con token en ReporteSyncService');
-        // Intenta una sincronización inmediata si hay conexión
-        sincronizarReportes();
+      final token = await _authService.getAccessToken();
+      if (token == null || token.isEmpty) {
+        return {
+          'success': false,
+          'message': 'No hay token de autenticación',
+        };
+      }
+
+      // Obtener ID del operador
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+
+      if (idOperador == null) {
+        return {
+          'success': false,
+          'message': 'No se pudo obtener ID del operador',
+        };
+      }
+
+      // Asegurar que el reporte tenga el operador correcto
+      reporteData['operador'] = idOperador;
+
+      final url = Uri.parse('${Enviroment.apiUrlDev}reportesdiarios/');
+      print('📤 Enviando reporte a: $url');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(reporteData),
+      ).timeout(const Duration(seconds: 30));
+
+      print('📥 Respuesta: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return {
+          'success': true,
+          'message': 'Reporte enviado exitosamente',
+          'server_id': responseData['id'],
+          'data': responseData,
+        };
       } else {
-        print('⚠️ Token de acceso no disponible - sincronización solo local');
-        _apiServiceReady = false;
+        print('❌ Error del servidor: ${response.body}');
+        return {
+          'success': false,
+          'message': 'Error del servidor: ${response.statusCode}',
+          'status_code': response.statusCode,
+        };
       }
     } catch (e) {
-      print('❌ Error inicializando ApiService: $e');
-      _apiServiceReady = false;
-    }
-  }
-
-  Future<void> _iniciarMonitorConexion() async {
-    _connectivitySubscription = _connectivityService.connectivityStream.listen(
-          (result) async {
-        print('📡 Cambio de conectividad detectado: $result');
-        _offlineMode = result == ConnectivityResult.none;
-
-        if (!_offlineMode && _apiServiceReady) {
-          print('✅ Conexión disponible - iniciando sincronización automática');
-          await Future.delayed(const Duration(seconds: 2));
-          await sincronizarReportes();
-        }
-      },
-    );
-  }
-
-  void _iniciarSincronizacionAutomatica(
-      {Duration interval = const Duration(minutes: 5)}) { // Intervalo más razonable
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = Timer.periodic(interval, (timer) {
-      if (_apiServiceReady && !_isSyncing) {
-        print('⏰ Timer: Disparando sincronización automática periódica...');
-        sincronizarReportes();
-      }
-    });
-  }
-
-  // Guardar reporte localmente o enviar si hay conexión
-  Future<Map<String, dynamic>> saveReporteGeolocalizacion({
-    required Map<String, dynamic> reporteData,
-    required Map<String, dynamic> despliegueData,
-  }) async {
-    final tieneInternet = await _verificarConexion();
-
-    print('═══════════════════════════════════════════════════════════');
-    print('🔤 PROCESANDO REPORTE DIARIO');
-    print('═══════════════════════════════════════════════════════════');
-    print('🌐 ¿Tiene internet?: $tieneInternet');
-    print('🌐 ¿ApiService listo?: $_apiServiceReady');
-
-    if (tieneInternet && _apiServiceReady) {
-      try {
-        await _enviarReporteYDespliegueOnline(reporteData, despliegueData);
-        return {
-          'success': true,
-          'message': 'Reporte enviado al servidor',
-          'saved_locally': false
-        };
-      } catch (e) {
-        print('⚠️ Falló el envío online, guardando localmente. Error: $e');
-        await _guardarReporteLocalmente(reporteData, despliegueData);
-        return {
-          'success': true,
-          'message': 'Falló el envío, reporte guardado localmente',
-          'saved_locally': true
-        };
-      }
-    } else {
-      print('🔌 Sin conexión o sin ApiService, guardando reporte localmente.');
-      await _guardarReporteLocalmente(reporteData, despliegueData);
+      print('❌ Error enviando reporte: $e');
       return {
-        'success': true,
-        'message': 'Reporte guardado localmente',
-        'saved_locally': true
+        'success': false,
+        'message': 'Error de conexión: ${e.toString()}',
       };
     }
   }
 
-  Future<void> _enviarReporteYDespliegueOnline(
-      Map<String, dynamic> reporteData,
-      Map<String, dynamic> despliegueData,
-      ) async {
-    if (!_apiServiceReady) {
-      throw Exception('ApiService no está listo');
-    }
+  // Guardar reporte localmente
+  Future<Map<String, dynamic>> guardarReporteLocalmente(
+      Map<String, dynamic> reporteData) async {
+    try {
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+      final nroEstacion = userData?.operador?.nroEstacion;
 
-    final reporteResult = await _apiService.enviarReporteDiario(reporteData);
-    if (!reporteResult['success']) {
-      throw Exception('Error al enviar reporte diario: ${reporteResult['message']}');
-    }
-
-    if (despliegueData['latitud'] != null && despliegueData['longitud'] != null) {
-      final despliegueResult = await _apiService.enviarRegistroDespliegue(despliegueData);
-      if (!despliegueResult) {
-        // No lanzamos excepción para no revertir el guardado, pero sí lo registramos
-        print('⚠️ Error al enviar despliegue, pero el reporte principal se envió.');
+      if (idOperador == null) {
+        return {
+          'success': false,
+          'message': 'No se pudo obtener datos del operador',
+        };
       }
+
+      // Crear modelo local
+      final reporteLocal = ReporteDiarioHistorial(
+        id: null,
+        idServer: null,
+        fechaReporte:
+        reporteData['fecha_reporte'] ?? DateTime.now().toIso8601String(),
+        contadorInicialC: reporteData['contador_inicial_c'] ?? '',
+        contadorFinalC: reporteData['contador_final_c'] ?? '',
+        contadorC: (reporteData['registro_c'] ?? 0).toString(),
+        contadorInicialR: reporteData['contador_inicial_r'] ?? '',
+        contadorFinalR: reporteData['contador_final_r'] ?? '',
+        contadorR: (reporteData['registro_r'] ?? 0).toString(),
+        incidencias: reporteData['incidencias'],
+        observaciones: reporteData['observaciones'],
+        fechaCreacion: DateTime.now(),
+        fechaSincronizacion: null,
+        estadoSincronizacion: EstadoSincronizacion.pendiente,
+        idOperador: idOperador,
+        idEstacion: reporteData['estacion'] ?? 0,
+        centroEmpadronamiento: reporteData['centro_empadronamiento'],
+        observacionC: reporteData['observacionC'],
+        observacionR: reporteData['observacionR'],
+        saltosenC: reporteData['saltosenC'] ?? 0,
+        saltosenR: reporteData['saltosenR'] ?? 0,
+      );
+
+      // Guardar en base de datos
+      final db = await _dbHelper.database;
+      final id = await db.insert(
+        DatabaseHelper.tableReportes,
+        reporteLocal.toLocalMap(),
+      );
+
+      print('💾 Reporte guardado localmente con ID: $id');
+
+      // Actualizar contador
+      await _actualizarContadorPendientes();
+
+      return {
+        'success': true,
+        'message': 'Reporte guardado localmente',
+        'local_id': id,
+        'saved_locally': true,
+      };
+    } catch (e) {
+      print('❌ Error guardando reporte localmente: $e');
+      return {
+        'success': false,
+        'message': 'Error guardando localmente: ${e.toString()}',
+        'saved_locally': false,
+      };
     }
   }
 
-  Future<void> _guardarReporteLocalmente(
-      Map<String, dynamic> reporteData,
-      Map<String, dynamic> despliegueData,
-      ) async {
-    if (!_isInitialized) {
-      throw Exception('Base de datos no inicializada');
+  // Sincronizar reporte (intentar enviar al servidor, si falla guardar local)
+  Future<Map<String, dynamic>> sincronizarReporte(
+      Map<String, dynamic> reporteData) async {
+    try {
+      // Verificar conexión
+      final tieneConexion = await verificarConexion();
+
+      if (tieneConexion) {
+        // Intentar enviar al servidor
+        final resultado = await enviarReporteAlServidor(reporteData);
+
+        if (resultado['success'] == true) {
+          // Si se envió exitosamente, también guardar localmente con ID del servidor
+          final userData = await _authService.getCurrentUser();
+          final idOperador = userData?.operador?.idOperador;
+
+          if (idOperador != null) {
+            final reporteLocal = ReporteDiarioHistorial(
+              id: null,
+              idServer: resultado['server_id'],
+              fechaReporte: reporteData['fecha_reporte'],
+              contadorInicialC: reporteData['contador_inicial_c'],
+              contadorFinalC: reporteData['contador_final_c'],
+              contadorC: (reporteData['registro_c'] ?? 0).toString(),
+              contadorInicialR: reporteData['contador_inicial_r'],
+              contadorFinalR: reporteData['contador_final_r'],
+              contadorR: (reporteData['registro_r'] ?? 0).toString(),
+              incidencias: reporteData['incidencias'],
+              observaciones: reporteData['observaciones'],
+              fechaCreacion: DateTime.now(),
+              fechaSincronizacion: DateTime.now(),
+              estadoSincronizacion: EstadoSincronizacion.sincronizado,
+              idOperador: idOperador,
+              idEstacion: reporteData['estacion'] ?? 0,
+              centroEmpadronamiento: reporteData['centro_empadronamiento'],
+              observacionC: reporteData['observacionC'],
+              observacionR: reporteData['observacionR'],
+              saltosenC: reporteData['saltosenC'] ?? 0,
+              saltosenR: reporteData['saltosenR'] ?? 0,
+            );
+
+            final db = await _dbHelper.database;
+            await db.insert(
+              DatabaseHelper.tableReportes,
+              reporteLocal.toLocalMap(),
+            );
+
+            print('✅ Reporte sincronizado exitosamente con el servidor');
+          }
+
+          // Actualizar contador
+          await _actualizarContadorPendientes();
+
+          return {
+            'success': true,
+            'message': 'Reporte enviado y guardado exitosamente',
+            'server_id': resultado['server_id'],
+            'saved_locally': false,
+          };
+        } else {
+          // Si falló el servidor, guardar localmente como pendiente
+          print('⚠️ Falló envío al servidor, guardando localmente');
+          return await guardarReporteLocalmente(reporteData);
+        }
+      } else {
+        // Sin conexión, guardar localmente
+        print('📱 Sin conexión, guardando reporte localmente');
+        return await guardarReporteLocalmente(reporteData);
+      }
+    } catch (e) {
+      print('❌ Error en sincronización: $e');
+      return {
+        'success': false,
+        'message': 'Error en sincronización: ${e.toString()}',
+        'saved_locally': false,
+      };
     }
+  }
+
+  // MÉTODO NECESARIO PARA SYNCSTATUSPANEL
+  Future<void> sincronizarReportes() async {
+    if (_isSyncing) return;
 
     try {
-      final db = await _databaseService.database;
-      await db.insert(
-        'reportes_pendientes',
-        {
-          'reporte_data': jsonEncode(reporteData),
-          'despliegue_data': jsonEncode(despliegueData),
-          'fecha_creacion': DateTime.now().toIso8601String(),
-          'sincronizado': 0,
-          'intentos': 0,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+      _isSyncing = true;
+      _syncStatusController.add(SyncStatus.syncing);
+
+      final tieneConexion = await verificarConexion();
+      if (!tieneConexion) {
+        _syncStatusController.add(SyncStatus.pending);
+        _isSyncing = false;
+        return;
+      }
+
+      // Obtener reportes pendientes
+      final db = await _dbHelper.database;
+      final pendientes = await db.query(
+        DatabaseHelper.tableReportes,
+        where: '${DatabaseHelper.columnEstado} = ?',
+        whereArgs: ['pendiente'],
       );
-      print('✅ Reporte guardado localmente');
-      await _actualizarConteoPendientes();
+
+      print('📊 Sincronizando ${pendientes.length} reportes pendientes');
+
+      if (pendientes.isEmpty) {
+        _syncStatusController.add(SyncStatus.synced);
+        _isSyncing = false;
+        return;
+      }
+
+      int sincronizadosExitosos = 0;
+      int total = pendientes.length;
+
+      // Actualizar progreso
+      _syncProgressController.add(SyncProgress(
+        actual: 0,
+        total: total,
+        porcentaje: 0,
+      ));
+
+      for (int i = 0; i < pendientes.length; i++) {
+        try {
+          final pendiente = pendientes[i];
+
+          // Convertir a mapa para enviar
+          final reporteData = {
+            'fecha_reporte': pendiente[DatabaseHelper.columnFechaReporte],
+            'contador_inicial_c': pendiente[DatabaseHelper.columnContadorInicialC],
+            'contador_final_c': pendiente[DatabaseHelper.columnContadorFinalC],
+            'registro_c': int.tryParse(pendiente[DatabaseHelper.columnContadorC] as String) ?? 0,
+            'contador_inicial_r': pendiente[DatabaseHelper.columnContadorInicialR],
+            'contador_final_r': pendiente[DatabaseHelper.columnContadorFinalR],
+            'registro_r': int.tryParse(pendiente[DatabaseHelper.columnContadorR] as String) ?? 0,
+            'incidencias': pendiente[DatabaseHelper.columnIncidencias],
+            'observaciones': pendiente[DatabaseHelper.columnObservaciones],
+            'operador': pendiente[DatabaseHelper.columnIdOperador],
+            'estacion': pendiente[DatabaseHelper.columnEstacionId],
+            'centro_empadronamiento': pendiente[DatabaseHelper.columnCentroEmpadronamiento],
+            'observacionC': pendiente[DatabaseHelper.columnObservacionC],
+            'observacionR': pendiente[DatabaseHelper.columnObservacionR],
+            'saltosenC': pendiente[DatabaseHelper.columnSaltosenC] ?? 0,
+            'saltosenR': pendiente[DatabaseHelper.columnSaltosenR] ?? 0,
+          };
+
+          final resultado = await enviarReporteAlServidor(reporteData);
+
+          if (resultado['success'] == true) {
+            // Marcar como sincronizado
+            await db.update(
+              DatabaseHelper.tableReportes,
+              {
+                DatabaseHelper.columnEstado: 'sincronizado',
+                DatabaseHelper.columnIdServer: resultado['server_id'],
+                DatabaseHelper.columnFechaSincronizacion: DateTime.now().toIso8601String(),
+              },
+              where: '${DatabaseHelper.columnId} = ?',
+              whereArgs: [pendiente[DatabaseHelper.columnId]],
+            );
+
+            sincronizadosExitosos++;
+          }
+
+          // Actualizar progreso
+          final porcentaje = ((i + 1) / total * 100).toInt();
+          _syncProgressController.add(SyncProgress(
+            actual: i + 1,
+            total: total,
+            porcentaje: porcentaje,
+          ));
+
+          await Future.delayed(const Duration(milliseconds: 100));
+        } catch (e) {
+          print('❌ Error sincronizando reporte: $e');
+        }
+      }
+
+      // Actualizar estado final
+      if (sincronizadosExitosos == total) {
+        _syncStatusController.add(SyncStatus.synced);
+      } else if (sincronizadosExitosos > 0) {
+        _syncStatusController.add(SyncStatus.synced);
+      } else {
+        _syncStatusController.add(SyncStatus.error);
+      }
+
+      // Actualizar contador de pendientes
+      await _actualizarContadorPendientes();
+
     } catch (e) {
-      print('❌ Error guardando reporte localmente: $e');
+      print('❌ Error en sincronización general: $e');
+      _syncStatusController.add(SyncStatus.error);
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  // Sincronizar reportes pendientes (método anterior mantenido para compatibilidad)
+  Future<Map<String, dynamic>> sincronizarReportesPendientes() async {
+    try {
+      final tieneConexion = await verificarConexion();
+      if (!tieneConexion) {
+        return {
+          'success': false,
+          'message': 'No hay conexión a internet',
+          'sincronizados': 0,
+        };
+      }
+
+      // Obtener reportes pendientes
+      final db = await _dbHelper.database;
+      final pendientes = await db.query(
+        DatabaseHelper.tableReportes,
+        where: '${DatabaseHelper.columnEstado} = ?',
+        whereArgs: ['pendiente'],
+      );
+
+      print('📊 Reportes pendientes para sincronizar: ${pendientes.length}');
+
+      if (pendientes.isEmpty) {
+        return {
+          'success': true,
+          'message': 'No hay reportes pendientes',
+          'sincronizados': 0,
+        };
+      }
+
+      int sincronizadosExitosos = 0;
+      int sincronizadosFallidos = 0;
+
+      for (var pendiente in pendientes) {
+        try {
+          // Convertir a mapa para enviar
+          final reporteData = {
+            'fecha_reporte': pendiente[DatabaseHelper.columnFechaReporte],
+            'contador_inicial_c': pendiente[DatabaseHelper.columnContadorInicialC],
+            'contador_final_c': pendiente[DatabaseHelper.columnContadorFinalC],
+            'registro_c': int.tryParse(pendiente[DatabaseHelper.columnContadorC] as String) ?? 0,
+            'contador_inicial_r': pendiente[DatabaseHelper.columnContadorInicialR],
+            'contador_final_r': pendiente[DatabaseHelper.columnContadorFinalR],
+            'registro_r': int.tryParse(pendiente[DatabaseHelper.columnContadorR] as String) ?? 0,
+            'incidencias': pendiente[DatabaseHelper.columnIncidencias],
+            'observaciones': pendiente[DatabaseHelper.columnObservaciones],
+            'operador': pendiente[DatabaseHelper.columnIdOperador],
+            'estacion': pendiente[DatabaseHelper.columnEstacionId],
+            'centro_empadronamiento': pendiente[DatabaseHelper.columnCentroEmpadronamiento],
+            'observacionC': pendiente[DatabaseHelper.columnObservacionC],
+            'observacionR': pendiente[DatabaseHelper.columnObservacionR],
+            'saltosenC': pendiente[DatabaseHelper.columnSaltosenC] ?? 0,
+            'saltosenR': pendiente[DatabaseHelper.columnSaltosenR] ?? 0,
+          };
+
+          final resultado = await enviarReporteAlServidor(reporteData);
+
+          if (resultado['success'] == true) {
+            // Marcar como sincronizado
+            await db.update(
+              DatabaseHelper.tableReportes,
+              {
+                DatabaseHelper.columnEstado: 'sincronizado',
+                DatabaseHelper.columnIdServer: resultado['server_id'],
+                DatabaseHelper.columnFechaSincronizacion: DateTime.now().toIso8601String(),
+              },
+              where: '${DatabaseHelper.columnId} = ?',
+              whereArgs: [pendiente[DatabaseHelper.columnId]],
+            );
+
+            sincronizadosExitosos++;
+            print('✅ Reporte ${pendiente[DatabaseHelper.columnId]} sincronizado');
+          } else {
+            sincronizadosFallidos++;
+            print('❌ Falló sincronización del reporte ${pendiente[DatabaseHelper.columnId]}');
+          }
+        } catch (e) {
+          sincronizadosFallidos++;
+          print('❌ Error sincronizando reporte: $e');
+        }
+      }
+
+      return {
+        'success': sincronizadosFallidos == 0,
+        'message': sincronizadosFallidos == 0
+            ? '✅ Todos los reportes sincronizados exitosamente'
+            : '⚠️ Sincronización parcial: $sincronizadosExitosos exitosos, $sincronizadosFallidos fallidos',
+        'sincronizados': sincronizadosExitosos,
+        'fallidos': sincronizadosFallidos,
+        'total': pendientes.length,
+      };
+    } catch (e) {
+      print('❌ Error sincronizando reportes pendientes: $e');
+      return {
+        'success': false,
+        'message': 'Error: ${e.toString()}',
+        'sincronizados': 0,
+        'fallidos': 0,
+        'total': 0,
+      };
+    }
+  }
+
+  // Método auxiliar para actualizar contador de pendientes
+  Future<void> _actualizarContadorPendientes() async {
+    try {
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+
+      if (idOperador == null) {
+        _pendingCountController.add(0);
+        return;
+      }
+
+      final db = await _dbHelper.database;
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM ${DatabaseHelper.tableReportes} ' +
+            'WHERE ${DatabaseHelper.columnEstado} = ? AND ${DatabaseHelper.columnIdOperador} = ?',
+        ['pendiente', idOperador],
+      );
+
+      final count = result.first['count'] as int? ?? 0;
+      _pendingCountController.add(count);
+
+      // También actualizar estado general basado en conexión y pendientes
+      final tieneConexion = await verificarConexion();
+      if (!tieneConexion && count > 0) {
+        _syncStatusController.add(SyncStatus.pending);
+      } else if (tieneConexion && count == 0) {
+        _syncStatusController.add(SyncStatus.synced);
+      }
+    } catch (e) {
+      print('❌ Error actualizando contador: $e');
+      _pendingCountController.add(0);
+    }
+  }
+
+  // Obtener estadísticas de reportes
+  Future<Map<String, dynamic>> obtenerEstadisticasReportes() async {
+    try {
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+
+      if (idOperador == null) {
+        return {'pendientes': 0, 'sincronizados': 0, 'total': 0};
+      }
+
+      final db = await _dbHelper.database;
+
+      // Total reportes del operador
+      final totalResult = await db.rawQuery(
+        'SELECT COUNT(*) as total FROM ${DatabaseHelper.tableReportes} WHERE ${DatabaseHelper.columnIdOperador} = ?',
+        [idOperador],
+      );
+      final total = totalResult.first['total'] as int? ?? 0;
+
+      // Reportes pendientes
+      final pendientesResult = await db.rawQuery(
+        'SELECT COUNT(*) as pendientes FROM ${DatabaseHelper.tableReportes} WHERE ${DatabaseHelper.columnIdOperador} = ? AND ${DatabaseHelper.columnEstado} = ?',
+        [idOperador, 'pendiente'],
+      );
+      final pendientes = pendientesResult.first['pendientes'] as int? ?? 0;
+
+      // Reportes sincronizados
+      final sincronizadosResult = await db.rawQuery(
+        'SELECT COUNT(*) as sincronizados FROM ${DatabaseHelper.tableReportes} WHERE ${DatabaseHelper.columnIdOperador} = ? AND ${DatabaseHelper.columnEstado} = ?',
+        [idOperador, 'sincronizado'],
+      );
+      final sincronizados = sincronizadosResult.first['sincronizados'] as int? ?? 0;
+
+      return {
+        'pendientes': pendientes,
+        'sincronizados': sincronizados,
+        'total': total,
+        'porcentaje': total > 0 ? (sincronizados / total * 100).toStringAsFixed(1) : '0.0',
+      };
+    } catch (e) {
+      print('❌ Error obteniendo estadísticas: $e');
+      return {'pendientes': 0, 'sincronizados': 0, 'total': 0, 'porcentaje': '0.0'};
+    }
+  }
+
+  // Eliminar reportes antiguos (más de 30 días sincronizados)
+  Future<void> limpiarReportesAntiguos() async {
+    try {
+      final db = await _dbHelper.database;
+      final fechaLimite = DateTime.now()
+          .subtract(const Duration(days: 30))
+          .toIso8601String();
+
+      await db.delete(
+        DatabaseHelper.tableReportes,
+        where:
+        '${DatabaseHelper.columnFechaCreacion} < ? AND ${DatabaseHelper.columnEstado} = ?',
+        whereArgs: [fechaLimite, 'sincronizado'],
+      );
+
+      print('🧹 Reportes antiguos limpiados');
+    } catch (e) {
+      print('❌ Error limpiando reportes antiguos: $e');
+    }
+  }
+
+  // MÉTODO NECESARIO PARA SYNCSTATUSPANEL
+  Future<SyncStats> getSyncStats() async {
+    try {
+      final stats = await obtenerEstadisticasReportes();
+
+      return SyncStats(
+        totalReportes: stats['total'] ?? 0,
+        sincronizados: stats['sincronizados'] ?? 0,
+        pendientes: stats['pendientes'] ?? 0,
+      );
+    } catch (e) {
+      print('❌ Error obteniendo SyncStats: $e');
+      return SyncStats(
+        totalReportes: 0,
+        sincronizados: 0,
+        pendientes: 0,
+      );
+    }
+  }
+
+  // MÉTODO NECESARIO PARA SYNCSTATUSPANEL
+  Future<void> limpiarReportesSincronizados() async {
+    try {
+      final db = await _dbHelper.database;
+
+      // Contar cuántos vamos a eliminar
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM ${DatabaseHelper.tableReportes} WHERE ${DatabaseHelper.columnEstado} = ?',
+        ['sincronizado'],
+      );
+      final count = result.first['count'] as int? ?? 0;
+
+      if (count == 0) {
+        print('ℹ️ No hay reportes sincronizados para limpiar');
+        return;
+      }
+
+      // Eliminar reportes sincronizados
+      await db.delete(
+        DatabaseHelper.tableReportes,
+        where: '${DatabaseHelper.columnEstado} = ?',
+        whereArgs: ['sincronizado'],
+      );
+
+      print('🧹 $count reportes sincronizados eliminados');
+
+      // Actualizar contador
+      await _actualizarContadorPendientes();
+
+    } catch (e) {
+      print('❌ Error limpiando reportes sincronizados: $e');
       rethrow;
     }
   }
 
-  // Sincronización de reportes pendientes
-  Future<void> sincronizarReportes({ApiService? apiService}) async {
-    if (_isSyncing) {
-      print('⏳ Sincronización ya en progreso');
-      return;
-    }
-
-    if (!_apiServiceReady && apiService == null) {
-      print('⚠️ ApiService no disponible, saltando sincronización');
-      return;
-    }
-
-    _isSyncing = true;
-    _syncStatusController.add(SyncStatus.syncing);
-    notifyListeners(); // Notificar que la sincronización ha comenzado
-
-    try {
-      final hasConnection = await _verificarConexion();
-      if (!hasConnection) {
-        print('❌ No hay conexión a internet');
-        _syncStatusController.add(SyncStatus.pending);
-        return;
-      }
-
-      final serviceToUse = apiService ?? _apiService;
-
-      final db = await _databaseService.database;
-      final reportesPendientes = await db.query(
-        'reportes_pendientes',
-        where: 'sincronizado = ?',
-        whereArgs: [0],
-      );
-
-      if (reportesPendientes.isEmpty) {
-        print('✅ No hay reportes pendientes');
-        _syncStatusController.add(SyncStatus.synced);
-        return;
-      }
-
-      print('📄 Sincronizando ${reportesPendientes.length} reportes...');
-      int sincronizados = 0;
-      int total = reportesPendientes.length;
-
-      for (int i = 0; i < reportesPendientes.length; i++) {
-        final reporte = reportesPendientes[i];
-        final id = reporte['id'] as int?;
-        if (id == null) continue;
-
-        final success = await _enviarReportePendiente(reporte, serviceToUse);
-        if (success) {
-          sincronizados++;
-          await _marcarComoSincronizado(db, id);
-        } else {
-          await _incrementarIntentos(db, id);
-        }
-
-        _syncProgressController.add(SyncProgress(
-          actual: i + 1,
-          total: total,
-          porcentaje: ((i + 1) / total * 100).toInt(),
-        ));
-      }
-
-      await _actualizarConteoPendientes();
-      print('✅ Sincronización completada: $sincronizados/$total');
-      _syncStatusController.add(SyncStatus.synced);
-    } catch (e) {
-      print('❌ Error durante sincronización: $e');
-      _syncStatusController.add(SyncStatus.error);
-    } finally {
-      _isSyncing = false;
-      notifyListeners(); // Notificar que la sincronización ha terminado
-    }
-  }
-
-  Future<bool> _enviarReportePendiente(
-      Map<String, dynamic> reportePendiente,
-      ApiService apiService,
-      ) async {
-    try {
-      final reporteData = jsonDecode(reportePendiente['reporte_data'] as String);
-      final despliegueData = jsonDecode(reportePendiente['despliegue_data'] as String);
-
-      final resultReporte = await apiService.enviarReporteDiario(reporteData);
-      if (!resultReporte['success']) {
-        print('❌ Error sincronizando reporte: ${resultReporte['message']}');
-        return false;
-      }
-
-      // Solo intentar enviar despliegue si tiene datos válidos
-      if (despliegueData['latitud'] != null && despliegueData['longitud'] != null) {
-        final resultDespliegue = await apiService.enviarRegistroDespliegue(despliegueData);
-        if (!resultDespliegue) {
-          print('⚠️ Error sincronizando despliegue, pero el reporte fue exitoso.');
-          // Decidimos retornar `true` porque el reporte principal, que es el
-          // más importante, se sincronizó.
-        }
-      }
-
-      print('✅ Reporte ID ${reportePendiente['id']} sincronizado exitosamente');
-      return true;
-    } catch (e) {
-      print('❌ Error fatal enviando reporte pendiente: $e');
-      return false;
-    }
-  }
-
-  // Estos métodos ya no son necesarios aquí si la lógica está en ApiService
-  /*
-  Future<void> _enviarReporteDiario(...) async { ... }
-  Future<void> _enviarDespliegueReporte(...) async { ... }
-  */
-
-  // Métodos auxiliares
-  Future<void> _marcarComoSincronizado(Database db, int id) async {
-    await db.update(
-      'reportes_pendientes',
-      {'sincronizado': 1, 'ultima_tentativa': DateTime.now().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<void> _incrementarIntentos(Database db, int id) async {
-    await db.rawUpdate(
-      'UPDATE reportes_pendientes SET intentos = intentos + 1, ultima_tentativa = ? WHERE id = ?',
-      [DateTime.now().toIso8601String(), id],
-    );
-  }
-
-  Future<void> _actualizarConteoPendientes() async {
-    try {
-      final count = await _contarReportesPendientes();
-      if (!_pendingCountController.isClosed) {
-        _pendingCountController.add(count);
-      }
-      print('📊 Reportes pendientes: $count');
-    } catch (e) {
-      print('❌ Error actualizando conteo: $e');
-    }
-  }
-
-  Future<int> _contarReportesPendientes() async {
-    if (!_isInitialized) return 0;
-    try {
-      final db = await _databaseService.database;
-      final result = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM reportes_pendientes WHERE sincronizado = 0',
-      );
-      return (result.first['count'] as int?) ?? 0;
-    } catch (e) {
-      print('❌ Error contando reportes: $e');
-      return 0;
-    }
-  }
-
-  Future<bool> _verificarConexion() async {
-    try {
-      return await _connectivityService.hasInternetConnection();
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Métodos públicos
+  // Métodos adicionales (mantenidos para compatibilidad)
   Future<SyncState> getSyncState() async {
     try {
-      final pendientes = await _contarReportesPendientes();
+      final tieneConexion = await verificarConexion();
+      final stats = await obtenerEstadisticasReportes();
+
       return SyncState(
-        hasPendingSync: pendientes > 0,
-        pendingReports: pendientes,
-        pendingDeployments: 0,
-        offlineMode: _offlineMode,
         isSyncing: _isSyncing,
-        success: true,
+        offlineMode: !tieneConexion,
+        hasPendingSync: (stats['pendientes'] ?? 0) > 0,
+        pendingReports: stats['pendientes'] ?? 0,
+        pendingDeployments: 0,
+        lastSync: DateTime.now(),
       );
     } catch (e) {
+      print('❌ Error obteniendo estado de sincronización: $e');
       return SyncState(
+        isSyncing: false,
+        offlineMode: true,
         hasPendingSync: false,
         pendingReports: 0,
-        offlineMode: _offlineMode,
-        isSyncing: false,
-        success: false,
+        pendingDeployments: 0,
+        lastSync: null,
       );
     }
   }
 
-  Future<SyncStats> getSyncStats() async {
-    if (!_isInitialized) {
-      return SyncStats(totalReportes: 0, sincronizados: 0, pendientes: 0);
-    }
-
+  Future<List<Map<String, dynamic>>> getReportes() async {
     try {
-      final db = await _databaseService.database;
-      final totalResult =
-      await db.rawQuery('SELECT COUNT(*) as count FROM reportes_pendientes');
-      final total = (totalResult.first['count'] as int?) ?? 0;
-
-      final sincronizadosResult = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM reportes_pendientes WHERE sincronizado = 1',
+      final db = await _dbHelper.database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        DatabaseHelper.tableReportes,
       );
-      final sincronizados = (sincronizadosResult.first['count'] as int?) ?? 0;
-
-      return SyncStats(
-        totalReportes: total,
-        sincronizados: sincronizados,
-        pendientes: total - sincronizados,
-      );
-    } catch (e) {
-      print('❌ Error obteniendo stats: $e');
-      return SyncStats(totalReportes: 0, sincronizados: 0, pendientes: 0);
-    }
-  }
-
-  Future<SyncResult> syncNow() async {
-    print('▶️ Iniciando sincronización manual');
-    if (!_apiServiceReady) {
-      return SyncResult(success: false, message: 'Servicio no listo. Inicia sesión.');
-    }
-
-    final pendientesAntes = await _contarReportesPendientes();
-    if (pendientesAntes == 0) {
-      return SyncResult(success: true, message: 'Sin reportes pendientes');
-    }
-
-    try {
-      await sincronizarReportes();
-      final pendientesDespues = await _contarReportesPendientes();
-      final sincronizados = pendientesAntes - pendientesDespues;
-
-      return SyncResult(
-        success: pendientesDespues == 0,
-        message: 'Sincronizados: $sincronizados de $pendientesAntes',
-        syncedCount: sincronizados,
-        failedCount: pendientesDespues,
-      );
-    } catch (e) {
-      return SyncResult(success: false, message: 'Error: $e');
-    }
-  }
-
-  Future<List<dynamic>> getReportes() async {
-    if (!_isInitialized) return [];
-
-    try {
-      final db = await _databaseService.database;
-      final reportes = await db.query('reportes_pendientes', orderBy: 'id DESC');
-      return reportes
-          .map((r) {
-        final reporteData = jsonDecode(r['reporte_data'] as String);
-        reporteData['id_local'] = r['id'];
-        reporteData['synced'] = (r['sincronizado'] == 1);
-        reporteData['attempts'] = r['intentos'];
-        reporteData['last_attempt'] = r['ultima_tentativa'];
-        return reporteData;
-      }).toList();
+      return maps;
     } catch (e) {
       print('❌ Error obteniendo reportes: $e');
       return [];
     }
   }
 
-  Future<void> limpiarReportesSincronizados() async {
+  Future<SyncStatus> getCurrentSyncStatus() async {
     try {
-      final db = await _databaseService.database;
-      final count = await db.delete('reportes_pendientes', where: 'sincronizado = ?', whereArgs: [1]);
-      await _actualizarConteoPendientes();
-      print('🧹 $count reportes sincronizados han sido limpiados');
+      final tieneConexion = await verificarConexion();
+      final stats = await obtenerEstadisticasReportes();
+      final pendientes = stats['pendientes'] ?? 0;
+
+      if (!tieneConexion) {
+        return SyncStatus.pending;
+      }
+
+      if (_isSyncing) {
+        return SyncStatus.syncing;
+      }
+
+      if (pendientes > 0) {
+        return SyncStatus.error;
+      }
+
+      return SyncStatus.synced;
     } catch (e) {
-      print('❌ Error limpiando reportes: $e');
+      return SyncStatus.error;
     }
   }
 
-  // ✅ CORRECCIÓN: Nuevo método para detener el temporizador
-  /// Detiene la sincronización automática periódica.
-  /// Útil al cerrar sesión para evitar que el servicio siga intentando sincronizar.
-  void stopSync() {
-    print('🛑 Deteniendo el temporizador de sincronización automática...');
-    // ✅ CORRECCIÓN: Se usa _autoSyncTimer, que es la variable correcta.
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = null;
-    print('✅ Temporizador de sincronización detenido.');
+  Future<SyncResult> syncNow() async {
+    await sincronizarReportes();
+
+    // Obtener estadísticas después de sincronizar
+    final stats = await obtenerEstadisticasReportes();
+    final pendientes = stats['pendientes'] ?? 0;
+
+    if (pendientes == 0) {
+      return SyncResult(
+        success: true,
+        message: '✅ Sincronización completada exitosamente',
+        syncCount: stats['sincronizados'] ?? 0,
+      );
+    } else {
+      return SyncResult(
+        success: false,
+        message: '⚠️ Sincronización parcial: ${pendientes} pendientes',
+        syncCount: stats['sincronizados'] ?? 0,
+      );
+    }
   }
 
-  // ✅ CORRECCIÓN: Método `dispose` único y corregido.
-  @override
+  Future<int> getPendingCount() async {
+    final stats = await obtenerEstadisticasReportes();
+    return stats['pendientes'] ?? 0;
+  }
+
+  // Método para cerrar streams
   void dispose() {
-    print('🧹 Limpiando recursos de ReporteSyncService...');
-    // Detiene el temporizador automático
-    stopSync();
-
-    // Cancela la suscripción a los cambios de conectividad
-    _connectivitySubscription?.cancel();
-
-    // Cierra todos los StreamControllers para evitar fugas de memoria
     _syncStatusController.close();
     _pendingCountController.close();
     _syncProgressController.close();
-
-    print('✅ ReporteSyncService limpiado correctamente.');
-    super.dispose();
   }
 }
-
-
-
-
-// import 'dart:async';
-// import 'dart:convert';
-// import 'package:connectivity_plus/connectivity_plus.dart';
-// import 'package:flutter/cupertino.dart';
-// import 'package:http/http.dart' as http;
-// import 'package:manager_key/services/connectivity_service.dart';
-// import 'package:sqflite/sqflite.dart';
-//
-// import '../../config/enviroment.dart';
-// import '../services/api_service.dart';
-// import '../services/auth_service.dart';
-// import '../services/database_service.dart';
-//
-// // --- ENUMS Y CLASES DE MODELO ---
-//
-// enum SyncStatus { synced, syncing, pending, error }
-//
-// class SyncProgress {
-//   final int actual;
-//   final int total;
-//   final int porcentaje;
-//
-//   SyncProgress({
-//     required this.actual,
-//     required this.total,
-//     required this.porcentaje,
-//   });
-// }
-//
-// class SyncStats {
-//   final int totalReportes;
-//   final int sincronizados;
-//   final int pendientes;
-//
-//   SyncStats({
-//     required this.totalReportes,
-//     required this.sincronizados,
-//     required this.pendientes,
-//   });
-//
-//   double get porcentajeSincronizado {
-//     if (totalReportes == 0) return 100;
-//     return (sincronizados / totalReportes * 100);
-//   }
-// }
-//
-// class SyncState {
-//   final bool hasPendingSync;
-//   final int pendingReports;
-//   final int? pendingDeployments;
-//   final bool offlineMode;
-//   final bool isSyncing;
-//   final bool success;
-//
-//   SyncState({
-//     required this.hasPendingSync,
-//     required this.pendingReports,
-//     this.pendingDeployments,
-//     this.offlineMode = false,
-//     this.isSyncing = false,
-//     this.success = true,
-//   });
-// }
-//
-// class SyncResult {
-//   final bool success;
-//   final String message;
-//   final int syncedCount;
-//   final int failedCount;
-//
-//   SyncResult({
-//     required this.success,
-//     required this.message,
-//     this.syncedCount = 0,
-//     this.failedCount = 0,
-//   });
-// }
-//
-// // --- SERVICIO DE SINCRONIZACIÓN ---
-//
-// class ReporteSyncService extends ChangeNotifier {
-//   final DatabaseService _databaseService;
-//   final ConnectivityService _connectivityService;
-//   //final AuthService _authService;
-//   late ApiService _apiService;
-//   String? _accessToken;
-//
-//   ReporteSyncService({
-//     required DatabaseService databaseService,
-//     required ConnectivityService connectivityService,
-//     // Puedes inyectar AuthService también si lo necesitas desde el principio.
-//     // required AuthService authService,
-//   })  : _databaseService = databaseService,
-//         _connectivityService = connectivityService
-//   // _authService = authService
-//   {
-//     print('✅ ReporteSyncService instanciado con sus dependencias (vía constructor nombrado).');
-//     _initializeService();
-//   }
-//
-//   // Variables de estado
-//   final Connectivity _connectivity = Connectivity();
-//   StreamSubscription? _connectivitySubscription;
-//
-//   final StreamController<SyncStatus> _syncStatusController =
-//   StreamController<SyncStatus>.broadcast();
-//   final StreamController<int> _pendingCountController =
-//   StreamController<int>.broadcast();
-//   final StreamController<SyncProgress> _syncProgressController =
-//   StreamController<SyncProgress>.broadcast();
-//
-//   bool _isInitialized = false;
-//   bool _isSyncing = false;
-//   Timer? _autoSyncTimer;
-//   bool _offlineMode = false;
-//   bool _apiServiceReady = false;
-//
-//   // Streams públicos
-//   Stream<SyncStatus> get syncStatusStream => _syncStatusController.stream;
-//   Stream<int> get pendingCountStream => _pendingCountController.stream;
-//   Stream<SyncProgress> get syncProgressStream => _syncProgressController.stream;
-//
-//   // Inicialización del servicio
-//   Future<void> _initializeService() async {
-//     if (_isInitialized) return;
-//
-//     try {
-//       await _databaseService.ensureTablesCreated();
-//       _isInitialized = true;
-//       await _iniciarMonitorConexion();
-//       _iniciarSincronizacionAutomatica();
-//       await _actualizarConteoPendientes();
-//       print('✅ ReporteSyncService inicializado correctamente');
-//     } catch (e) {
-//       print('❌ Error inicializando ReporteSyncService: $e');
-//     }
-//   }
-//
-//   // ✅ NUEVO: Inicializar ApiService cuando hay token disponible
-//   Future<void> initialize({String? accessToken}) async {
-//     try {
-//       if (accessToken != null && accessToken.isNotEmpty) {
-//         _apiService = ApiService(accessToken: accessToken);
-//         _apiServiceReady = true;
-//         print('✅ ApiService inicializado con token en ReporteSyncService');
-//       } else {
-//         print('⚠️ Token de acceso no disponible - sincronización solo local');
-//         _apiServiceReady = false;
-//       }
-//     } catch (e) {
-//       print('❌ Error inicializando ApiService: $e');
-//       _apiServiceReady = false;
-//     }
-//   }
-//
-//   Future<void> _iniciarMonitorConexion() async {
-//     _connectivitySubscription = _connectivityService.connectivityStream.listen( // Usa el servicio inyectado
-//           (result) async {
-//         print('📡 Cambio de conectividad detectado: $result');
-//         _offlineMode = result == ConnectivityResult.none;
-//
-//         if (!_offlineMode && _apiServiceReady) {
-//           print('✅ Conexión disponible - iniciando sincronización automática');
-//           await Future.delayed(const Duration(seconds: 2));
-//           await sincronizarReportes(); // Usas el nombre de tu método
-//         }
-//       },
-//     );
-//   }
-//
-//   void _iniciarSincronizacionAutomatica(
-//       {Duration interval = const Duration(seconds: 30)}) {
-//     _autoSyncTimer?.cancel();
-//     _autoSyncTimer = Timer.periodic(interval, (timer) {
-//       // ✅ SOLO intentar si hay ApiService listo
-//       if (_apiServiceReady && !_isSyncing) {
-//         print('⏰ Timer: Disparando sincronización automática periódica...');
-//         sincronizarReportes();
-//       }
-//     });
-//   }
-//
-//   // Guardar reporte localmente o enviar si hay conexión
-//   Future<Map<String, dynamic>> saveReporteGeolocalizacion({
-//     required Map<String, dynamic> reporteData,
-//     required Map<String, dynamic> despliegueData,
-//   }) async {
-//     final tieneInternet = await _verificarConexion();
-//
-//     print('═══════════════════════════════════════════════════════════');
-//     print('🔤 PROCESANDO REPORTE DIARIO');
-//     print('═══════════════════════════════════════════════════════════');
-//     print('🌐 ¿Tiene internet?: $tieneInternet');
-//     print('🌐 ¿ApiService listo?: $_apiServiceReady');
-//
-//     if (tieneInternet && _apiServiceReady) {
-//       try {
-//         await _enviarReporteYDespliegueOnline(reporteData, despliegueData);
-//         return {
-//           'success': true,
-//           'message': 'Reporte enviado al servidor',
-//           'saved_locally': false
-//         };
-//       } catch (e) {
-//         print('⚠️ Falló el envío online, guardando localmente. Error: $e');
-//         await _guardarReporteLocalmente(reporteData, despliegueData);
-//         return {
-//           'success': true,
-//           'message': 'Falló el envío, reporte guardado localmente',
-//           'saved_locally': true
-//         };
-//       }
-//     } else {
-//       print('🔌 Sin conexión o sin ApiService, guardando reporte localmente.');
-//       await _guardarReporteLocalmente(reporteData, despliegueData);
-//       return {
-//         'success': true,
-//         'message': 'Reporte guardado localmente',
-//         'saved_locally': true
-//       };
-//     }
-//   }
-//
-//   Future<void> _enviarReporteYDespliegueOnline(
-//       Map<String, dynamic> reporteData,
-//       Map<String, dynamic> despliegueData,
-//       ) async {
-//     if (!_apiServiceReady) {
-//       throw Exception('ApiService no está listo');
-//     }
-//
-//     final accessToken = await AuthService().getAccessToken();
-//     if (accessToken == null || accessToken.isEmpty) {
-//       throw Exception('No se pudo obtener token de autenticación');
-//     }
-//
-//     await _enviarReporteDiario(reporteData, accessToken);
-//
-//     if (despliegueData['latitud'] != null && despliegueData['longitud'] != null) {
-//       await _enviarDespliegueReporte(despliegueData, accessToken);
-//     }
-//   }
-//
-//   Future<void> _guardarReporteLocalmente(
-//       Map<String, dynamic> reporteData,
-//       Map<String, dynamic> despliegueData,
-//       ) async {
-//     if (!_isInitialized) {
-//       throw Exception('Base de datos no inicializada');
-//     }
-//
-//     try {
-//       final db = await _databaseService.database;
-//       await db.insert(
-//         'reportes_pendientes',
-//         {
-//           'reporte_data': jsonEncode(reporteData),
-//           'despliegue_data': jsonEncode(despliegueData),
-//           'fecha_creacion': DateTime.now().toIso8601String(),
-//           'sincronizado': 0,
-//           'intentos': 0,
-//         },
-//         conflictAlgorithm: ConflictAlgorithm.replace,
-//       );
-//       print('✅ Reporte guardado localmente');
-//       await _actualizarConteoPendientes();
-//     } catch (e) {
-//       print('❌ Error guardando reporte localmente: $e');
-//       rethrow;
-//     }
-//   }
-//
-//   // Sincronización de reportes pendientes
-//   Future<void> sincronizarReportes({ApiService? apiService}) async {
-//     if (_isSyncing) {
-//       print('⏳ Sincronización ya en progreso');
-//       return;
-//     }
-//
-//     // ✅ SI NO HAY ApiService listo, no intentar sincronizar
-//     if (!_apiServiceReady && apiService == null) {
-//       print('⚠️ ApiService no disponible, saltando sincronización');
-//       return;
-//     }
-//
-//     _isSyncing = true;
-//     _syncStatusController.add(SyncStatus.syncing);
-//
-//     try {
-//       final hasConnection = await _verificarConexion();
-//       if (!hasConnection) {
-//         print('❌ No hay conexión a internet');
-//         _syncStatusController.add(SyncStatus.pending);
-//         return;
-//       }
-//
-//       final serviceToUse = apiService ?? ((_apiServiceReady) ? _apiService : null);
-//       if (serviceToUse == null) {
-//         print('⚠️ No hay ApiService disponible para sincronización');
-//         _syncStatusController.add(SyncStatus.error);
-//         return;
-//       }
-//
-//       final db = await _databaseService.database;
-//       final reportesPendientes = await db.query(
-//         'reportes_pendientes',
-//         where: 'sincronizado = ?',
-//         whereArgs: [0],
-//       );
-//
-//       if (reportesPendientes.isEmpty) {
-//         print('✅ No hay reportes pendientes');
-//         _syncStatusController.add(SyncStatus.synced);
-//         return;
-//       }
-//
-//       print('📄 Sincronizando ${reportesPendientes.length} reportes...');
-//       int sincronizados = 0;
-//       int total = reportesPendientes.length;
-//
-//       for (int i = 0; i < reportesPendientes.length; i++) {
-//         final reporte = reportesPendientes[i];
-//         final id = reporte['id'] as int?;
-//         if (id == null) continue;
-//
-//         final success = await _enviarReportePendiente(reporte, serviceToUse);
-//         if (success) {
-//           sincronizados++;
-//           await _marcarComoSincronizado(db, id);
-//         } else {
-//           await _incrementarIntentos(db, id);
-//         }
-//
-//         _syncProgressController.add(SyncProgress(
-//           actual: i + 1,
-//           total: total,
-//           porcentaje: ((i + 1) / total * 100).toInt(),
-//         ));
-//       }
-//
-//       await _actualizarConteoPendientes();
-//       print('✅ Sincronización completada: $sincronizados/$total');
-//       _syncStatusController.add(SyncStatus.synced);
-//     } catch (e) {
-//       print('❌ Error durante sincronización: $e');
-//       _syncStatusController.add(SyncStatus.error);
-//     } finally {
-//       _isSyncing = false;
-//     }
-//   }
-//
-//   Future<bool> _enviarReportePendiente(
-//       Map<String, dynamic> reportePendiente,
-//       ApiService apiService,
-//       ) async {
-//     try {
-//       final reporteData = jsonDecode(reportePendiente['reporte_data']);
-//       final despliegueData = jsonDecode(reportePendiente['despliegue_data']);
-//
-//       final resultReporte = await apiService.enviarReporteDiario(reporteData);
-//       if (!resultReporte['success']) {
-//         print('❌ Error sincronizando reporte: ${resultReporte['message']}');
-//         return false;
-//       }
-//
-//       final resultDespliegue =
-//       await apiService.enviarRegistroDespliegue(despliegueData);
-//       if (!resultDespliegue) {
-//         print('❌ Error sincronizando despliegue');
-//         return false;
-//       }
-//
-//       print('✅ Reporte sincronizado exitosamente');
-//       return true;
-//     } catch (e) {
-//       print('❌ Error enviando reporte: $e');
-//       return false;
-//     }
-//   }
-//
-//   Future<void> _enviarReporteDiario(
-//       Map<String, dynamic> reporteData,
-//       String accessToken,
-//       ) async {
-//     final url = '${Enviroment.apiUrlDev}reportesdiarios/';
-//     final jsonReporte = {
-//       'fecha_reporte': reporteData['fecha_reporte'],
-//       'contador_inicial_c': reporteData['contador_inicial_c'],
-//       'contador_final_c': reporteData['contador_final_c'],
-//       'registro_c': reporteData['registro_c'],
-//       'contador_inicial_r': reporteData['contador_inicial_r'],
-//       'contador_final_r': reporteData['contador_final_r'],
-//       'registro_r': reporteData['registro_r'],
-//       'incidencias': reporteData['incidencias'] ?? '',
-//       'observaciones': reporteData['observaciones'] ?? '',
-//       'estado': reporteData['estado'] ?? 'ENVIO REPORTE',
-//       'sincronizar': reporteData['sincronizar'] ?? true,
-//       'operador': reporteData['operador'],
-//       'estacion': reporteData['estacion'],
-//       'centro_empadronamiento': reporteData['centro_empadronamiento'],
-//       'observacionC': reporteData['observacionC'] ?? '',
-//       'observacionR': reporteData['observacionR'] ?? '',
-//       'saltosenC':
-//       int.tryParse(reporteData['saltosenC']?.toString() ?? '0') ?? 0,
-//       'saltosenR':
-//       int.tryParse(reporteData['saltosenR']?.toString() ?? '0') ?? 0,
-//       'fecha_registro': DateTime.now()
-//           .toLocal()
-//           .toIso8601String()
-//           .replaceAll('Z', ''),
-//     };
-//
-//     final response = await http
-//         .post(
-//       Uri.parse(url),
-//       headers: {
-//         'Content-Type': 'application/json',
-//         'Accept': 'application/json',
-//         'Authorization': 'Bearer $accessToken'
-//       },
-//       body: jsonEncode(jsonReporte),
-//     )
-//         .timeout(const Duration(seconds: 30));
-//
-//     if (response.statusCode != 200 && response.statusCode != 201) {
-//       throw Exception('Error al enviar reporte: ${response.statusCode}');
-//     }
-//   }
-//
-//   Future<void> _enviarDespliegueReporte(
-//       Map<String, dynamic> despliegueData,
-//       String accessToken,
-//       ) async {
-//     final url = '${Enviroment.apiUrlDev}registrosdespliegue/';
-//     final jsonDespliegue = {
-//       'latitud': double.tryParse(despliegueData['latitud'].toString()) ?? 0,
-//       'longitud': double.tryParse(despliegueData['longitud'].toString()) ?? 0,
-//       'descripcion_reporte': null,
-//       'estado': despliegueData['estado'] ?? 'REPORTE ENVIADO',
-//       'sincronizar': true,
-//       'observaciones': despliegueData['observaciones'],
-//       'incidencias': despliegueData['incidencias'],
-//       'fecha_hora': despliegueData['fecha_hora'],
-//       'operador': despliegueData['operador'],
-//     };
-//
-//     final response = await http
-//         .post(
-//       Uri.parse(url),
-//       headers: {
-//         'Content-Type': 'application/json',
-//         'Accept': 'application/json',
-//         'Authorization': 'Bearer $accessToken'
-//       },
-//       body: jsonEncode(jsonDespliegue),
-//     )
-//         .timeout(const Duration(seconds: 20));
-//
-//     if (response.statusCode != 200 && response.statusCode != 201) {
-//       print('⚠️ Error enviando despliegue: ${response.statusCode}');
-//     }
-//   }
-//
-//   // Métodos auxiliares
-//   Future<void> _marcarComoSincronizado(Database db, int id) async {
-//     await db.update(
-//       'reportes_pendientes',
-//       {
-//         'sincronizado': 1,
-//         'ultima_tentativa': DateTime.now().toIso8601String()
-//       },
-//       where: 'id = ?',
-//       whereArgs: [id],
-//     );
-//   }
-//
-//   Future<void> _incrementarIntentos(Database db, int id) async {
-//     await db.rawUpdate(
-//       'UPDATE reportes_pendientes SET intentos = intentos + 1, ultima_tentativa = ? WHERE id = ?',
-//       [DateTime.now().toIso8601String(), id],
-//     );
-//   }
-//
-//   Future<void> _actualizarConteoPendientes() async {
-//     try {
-//       final count = await _contarReportesPendientes();
-//       _pendingCountController.add(count);
-//       print('📊 Reportes pendientes: $count');
-//     } catch (e) {
-//       print('❌ Error actualizando conteo: $e');
-//     }
-//   }
-//
-//   Future<int> _contarReportesPendientes() async {
-//     if (!_isInitialized) return 0;
-//     try {
-//       final db = await _databaseService.database;
-//       final result = await db.rawQuery(
-//         'SELECT COUNT(*) as count FROM reportes_pendientes WHERE sincronizado = 0',
-//       );
-//       return (result.first['count'] as int?) ?? 0;
-//     } catch (e) {
-//       print('❌ Error contando reportes: $e');
-//       return 0;
-//     }
-//   }
-//
-//   Future<bool> _verificarConexion() async {
-//     try {
-//
-//       return await _connectivityService.hasInternetConnection();
-//     } catch (e) {
-//       return false;
-//     }
-//   }
-//
-//   // Métodos públicos
-//   Future<SyncState> getSyncState() async {
-//     try {
-//       final pendientes = await _contarReportesPendientes();
-//       return SyncState(
-//         hasPendingSync: pendientes > 0,
-//         pendingReports: pendientes,
-//         pendingDeployments: 0,
-//         offlineMode: _offlineMode,
-//         isSyncing: _isSyncing,
-//         success: true,
-//       );
-//     } catch (e) {
-//       return SyncState(
-//         hasPendingSync: false,
-//         pendingReports: 0,
-//         offlineMode: _offlineMode,
-//         isSyncing: false,
-//         success: false,
-//       );
-//     }
-//   }
-//
-//   Future<SyncStats> getSyncStats() async {
-//     if (!_isInitialized) {
-//       return SyncStats(totalReportes: 0, sincronizados: 0, pendientes: 0);
-//     }
-//
-//     try {
-//       final db = await _databaseService.database;
-//       final totalResult =
-//       await db.rawQuery('SELECT COUNT(*) as count FROM reportes_pendientes');
-//       final total = (totalResult.first['count'] as int?) ?? 0;
-//
-//       final sincronizadosResult = await db.rawQuery(
-//         'SELECT COUNT(*) as count FROM reportes_pendientes WHERE sincronizado = 1',
-//       );
-//       final sincronizados = (sincronizadosResult.first['count'] as int?) ?? 0;
-//
-//       return SyncStats(
-//         totalReportes: total,
-//         sincronizados: sincronizados,
-//         pendientes: total - sincronizados,
-//       );
-//     } catch (e) {
-//       print('❌ Error obteniendo stats: $e');
-//       return SyncStats(totalReportes: 0, sincronizados: 0, pendientes: 0);
-//     }
-//   }
-//
-//   Future<SyncResult> syncNow() async {
-//     print('▶️ Iniciando sincronización manual');
-//
-//     if (!_apiServiceReady) {
-//       return SyncResult(
-//         success: false,
-//         message: 'ApiService no está disponible. Inicia sesión primero.',
-//       );
-//     }
-//
-//     final pendientesAntes = await _contarReportesPendientes();
-//     if (pendientesAntes == 0) {
-//       return SyncResult(
-//         success: true,
-//         message: 'Sin reportes pendientes',
-//       );
-//     }
-//
-//     try {
-//       await sincronizarReportes();
-//       final pendientesDespues = await _contarReportesPendientes();
-//       final sincronizados = pendientesAntes - pendientesDespues;
-//
-//       return SyncResult(
-//         success: pendientesDespues == 0,
-//         message: 'Sincronizados: $sincronizados',
-//         syncedCount: sincronizados,
-//       );
-//     } catch (e) {
-//       return SyncResult(
-//         success: false,
-//         message: 'Error: $e',
-//       );
-//     }
-//   }
-//
-//   Future<List<Map<String, dynamic>>> getReportes() async {
-//     if (!_isInitialized) return [];
-//
-//     try {
-//       final db = await _databaseService.database;
-//       final reportes = await db.query('reportes_pendientes');
-//       return reportes
-//           .map((r) {
-//         final reporteData = jsonDecode(r['reporte_data'] as String);
-//         reporteData['synced'] = (r['sincronizado'] == 1);
-//         return reporteData as Map<String, dynamic>;
-//       })
-//           .toList();
-//     } catch (e) {
-//       print('❌ Error obteniendo reportes: $e');
-//       return [];
-//     }
-//   }
-//
-//   Future<void> limpiarReportesSincronizados() async {
-//     try {
-//       final db = await _databaseService.database;
-//       await db.delete('reportes_pendientes', where: 'sincronizado = ?', whereArgs: [1]);
-//       await _actualizarConteoPendientes();
-//       print('🧹 Reportes sincronizados limpiados');
-//     } catch (e) {
-//       print('❌ Error limpiando: $e');
-//     }
-//   }
-//
-//   @override
-//   void dispose() {
-//     _connectivitySubscription?.cancel();
-//     _autoSyncTimer?.cancel();
-//     _syncStatusController.close();
-//     _pendingCountController.close();
-//     _syncProgressController.close();
-//     super.dispose();
-//   }
-//
-//   // ✅ AGREGAR ESTE MÉTODO A TU ReporteSyncService
-//
-//   /// Detener la sincronización
-//   void stopSync() {
-//     print('🛑 Deteniendo sincronización...');
-//     _syncTimer?.cancel();
-//     _syncTimer = null;
-//     print('✅ Sincronización detenida');
-//   }
-//
-//   /// Limpiar recursos
-//   void dispose() {
-//     print('🧹 Limpiando ReporteSyncService...');
-//     stopSync();
-//     // Limpiar cualquier otro recurso
-//     print('✅ ReporteSyncService limpio');
-//   }
-// }

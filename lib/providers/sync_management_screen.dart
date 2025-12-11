@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../services/reporte_sync_service.dart';
 import '../services/auth_service.dart';
-import '../services/api_service.dart';
+import '../models/sync_models.dart';
 
 class SyncManagementScreen extends StatefulWidget {
   const SyncManagementScreen({Key? key}) : super(key: key);
@@ -14,11 +14,13 @@ class SyncManagementScreen extends StatefulWidget {
 
 class _SyncManagementScreenState extends State<SyncManagementScreen> {
   late ReporteSyncService _syncService;
+  late AuthService _authService;
 
   @override
   void initState() {
     super.initState();
     _syncService = context.read<ReporteSyncService>();
+    _authService = AuthService();
   }
 
   @override
@@ -46,9 +48,8 @@ class _SyncManagementScreenState extends State<SyncManagementScreen> {
                   const SizedBox(height: 16),
 
                   // Indicador de estado
-                  StreamBuilder<SyncStatus>(
-                    stream: _syncService.syncStatusStream,
-                    initialData: SyncStatus.synced,
+                  FutureBuilder<SyncStatus>(
+                    future: _syncService.getCurrentSyncStatus(),
                     builder: (context, snapshot) {
                       final status = snapshot.data ?? SyncStatus.synced;
                       return _buildStatusIndicator(status);
@@ -58,9 +59,8 @@ class _SyncManagementScreenState extends State<SyncManagementScreen> {
                   const SizedBox(height: 16),
 
                   // Contador de reportes pendientes
-                  StreamBuilder<int>(
-                    stream: _syncService.pendingCountStream,
-                    initialData: 0,
+                  FutureBuilder<int>(
+                    future: _syncService.getPendingCount(),
                     builder: (context, snapshot) {
                       final pendientes = snapshot.data ?? 0;
                       return Container(
@@ -124,51 +124,6 @@ class _SyncManagementScreenState extends State<SyncManagementScreen> {
                               ),
                           ],
                         ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Progreso de sincronización
-                  StreamBuilder<SyncProgress>(
-                    stream: _syncService.syncProgressStream,
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const SizedBox.shrink();
-
-                      final progress = snapshot.data!;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Progreso: ${progress.actual}/${progress.total}',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              Text(
-                                '${progress.porcentaje}%',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: LinearProgressIndicator(
-                              value: progress.porcentaje / 100,
-                              minHeight: 8,
-                              backgroundColor: Colors.grey.shade300,
-                              valueColor: AlwaysStoppedAnimation(
-                                Colors.blue.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
                       );
                     },
                   ),
@@ -450,23 +405,20 @@ class _SyncManagementScreenState extends State<SyncManagementScreen> {
     );
 
     try {
-      final authService = AuthService();
-      final accessToken = await authService.getAccessToken();
+      await _syncService.syncNow();
 
-      if (accessToken != null) {
-        final apiService = ApiService(accessToken: accessToken);
-        await _syncService.sincronizarReportes(apiService: apiService);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No hay token de autenticación disponible'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Sincronización completada'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('❌ Error: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
