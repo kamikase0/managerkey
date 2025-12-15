@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:manager_key/services/reporte_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,33 @@ class AuthService {
     _reporteSyncService = syncService;
   }
 
+  // ✅✅✅ MÉTODO DE LOGOUT CORREGIDO Y PÚBLICO ✅✅✅
+  /// Realiza la limpieza de la sesión y detiene los servicios en segundo plano.
+  /// No maneja la UI (diálogos o navegación).
+  Future<void> logout() async {
+    print('🔄 Iniciando proceso de logout en AuthService...');
+    try {
+      // 1. Detener el servicio en segundo plano
+      final service = FlutterBackgroundService();
+      var isRunning = await service.isRunning();
+      if (isRunning) {
+        service.invoke("stopService");
+        print('⏹️ Servicio de fondo DETENIDO.');
+      }
+
+      // 2. Limpiar todos los datos de SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      // Usar clear() es la forma más segura de garantizar una limpieza completa.
+      await prefs.clear();
+
+      print('✅ Datos de sesión eliminados de SharedPreferences.');
+    } catch (e) {
+      print('❌ Error durante el proceso de logout en AuthService: $e');
+      // Opcionalmente, relanzar el error si quieres que la UI lo maneje.
+      // rethrow;
+    }
+  }
+
   // Método para sincronizar puntos de empadronamiento
   Future<void> _sincronizarPuntosEmpadronamiento(String accessToken) async {
     try {
@@ -67,86 +95,19 @@ class AuthService {
     return prefs.getString('access_token');
   }
 
-  /// LOGOUT COMPLETO Y CORRECTO
-  Future<void> logout() async {
-    try {
-      print('🔄 Iniciando logout completo...');
-
-      final prefs = await SharedPreferences.getInstance();
-
-      // 1️⃣ Remover todos los tokens
-      print('🔑 Eliminando tokens...');
-      await prefs.remove('access_token');
-      await prefs.remove('refresh_token');
-      print('✅ Tokens eliminados');
-
-      // 2️⃣ Remover datos de autenticación
-      print('👤 Eliminando datos de usuario...');
-      await prefs.remove(_authKey);
-      await prefs.remove(_userKey);
-      print('✅ Datos de usuario eliminados');
-
-      // 3️⃣ Remover datos de reportes
-      print('📊 Eliminando caché de reportes...');
-      await prefs.remove(_reportesKey);
-      await prefs.remove('reportes_cargados_login');
-      print('✅ Caché de reportes eliminada');
-
-      // 4️⃣ Remover otros datos cacheados
-      print('💾 Eliminando datos cacheados...');
-      final allKeys = prefs.getKeys();
-
-      // Remover todas las claves que contengan datos de sesión
-      final keysToRemove = allKeys.where((key) =>
-      key.contains('auth') ||
-          key.contains('user') ||
-          key.contains('token') ||
-          key.contains('reporte') ||
-          key.contains('ubicacion') ||
-          key.contains('sync') ||
-          key.contains('cache')
-      ).toList();
-
-      for (final key in keysToRemove) {
-        print('  - Removiendo: $key');
-        await prefs.remove(key);
-      }
-
-      print('✅ Datos cacheados eliminados');
-
-      // 5️⃣ Limpiar el singleton
-      print('🧹 Limpiando servicios...');
-      _reporteSyncService = null;
-      print('✅ Servicios limpios');
-
-      print('✅ ============================================');
-      print('✅ LOGOUT COMPLETADO CORRECTAMENTE');
-      print('✅ ============================================');
-    } catch (e) {
-      print('❌ Error durante logout: $e');
-      // Continuar de todas formas, asegurando que se limpie lo máximo posible
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.clear(); // Nuclear option si algo falla
-        print('✅ SharedPreferences limpiada completamente');
-      } catch (e2) {
-        print('❌ Error limpiando SharedPreferences: $e2');
-      }
-    }
-  }
-
   // VERIFICAR DATOS RESIDUALES (para debugging)
   Future<Map<String, dynamic>> diagnosticarLogout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final allKeys = prefs.getKeys();
 
-      final relevantKeys = allKeys.where((key) =>
+      final relevantKeys = allKeys
+          .where((key) =>
       key.contains('auth') ||
           key.contains('user') ||
           key.contains('token') ||
-          key.contains('reporte')
-      ).toList();
+          key.contains('reporte'))
+          .toList();
 
       return {
         'totalKeys': allKeys.length,
@@ -169,7 +130,8 @@ class AuthService {
       if (token != null) {
         await _sincronizarPuntosEmpadronamiento(token);
       } else {
-        print('❌ No hay token disponible para sincronizar puntos de empadronamiento');
+        print(
+            '❌ No hay token disponible para sincronizar puntos de empadronamiento');
       }
     } catch (e) {
       print('❌ Error forzando sincronización: $e');
@@ -240,14 +202,7 @@ class AuthService {
 
   Future<bool> refreshToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final authJson = prefs.getString(_authKey);
-
-    if (authJson == null) {
-      return false;
-    }
-
-    final tokenMap = json.decode(authJson) as Map<String, dynamic>;
-    final refreshToken = tokenMap['refresh'] ?? tokenMap['refreshToken'];
+    final refreshToken = prefs.getString('refresh_token');
 
     if (refreshToken == null) {
       return false;
@@ -262,13 +217,11 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final newTokens = json.decode(response.body);
-        tokenMap['access'] = newTokens['access'];
-        await prefs.setString(_authKey, json.encode(tokenMap));
+        await saveTokens(access: newTokens['access']);
         print('✅ Token de acceso refrescado exitosamente.');
         return true;
       } else {
-        print('❌ Falló el refresco del token. Forzando logout.');
-        await logout();
+        print('❌ Falló el refresco del token. Se requerirá un nuevo login.');
         return false;
       }
     } catch (e) {
@@ -320,8 +273,8 @@ class AuthService {
   Future<bool> _verificarConexionInternet() async {
     try {
       final response = await http
-          .get(Uri.parse('${Enviroment.apiUrlDev}/'))
-          .timeout(Duration(seconds: 5));
+          .get(Uri.parse(Enviroment.apiUrlDev))
+          .timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
     } catch (e) {
       return false;
@@ -500,7 +453,8 @@ class AuthService {
         print('🌐 Con internet - cargando reportes desde servidor');
 
         final apiService = ApiService(accessToken: token);
-        final reportes = await apiService.obtenerReportesPorOperador(idOperador);
+        final reportes =
+        await apiService.obtenerReportesPorOperador(idOperador);
 
         if (reportes.isNotEmpty) {
           await _guardarReportesEnBaseDatosLocal(reportes);
@@ -512,14 +466,14 @@ class AuthService {
       }
 
       await marcarReportesCargados();
-
     } catch (e) {
       print('❌ Error cargando reportes durante login: $e');
     }
   }
 
   // Método auxiliar para guardar reportes en base de datos local (CORREGIDO)
-  Future<void> _guardarReportesEnBaseDatosLocal(List<Map<String, dynamic>> reportes) async {
+  Future<void> _guardarReportesEnBaseDatosLocal(
+      List<Map<String, dynamic>> reportes) async {
     try {
       final DatabaseHelper dbHelper = DatabaseHelper();
 
@@ -541,7 +495,8 @@ class AuthService {
   }
 
   // Método auxiliar para convertir ReporteDiarioHistorial a ReporteDiarioLocal
-  ReporteDiarioLocal _convertirHistorialALocal(ReporteDiarioHistorial historial) {
+  ReporteDiarioLocal _convertirHistorialALocal(
+      ReporteDiarioHistorial historial) {
     return ReporteDiarioLocal(
       id: historial.id,
       idServer: historial.idServer,
@@ -666,7 +621,8 @@ class AuthService {
 
         return {'success': true, 'message': 'Login exitoso'};
       } else {
-        print('❌ Error de autenticación: ${response.statusCode} - ${response.body}');
+        print(
+            '❌ Error de autenticación: ${response.statusCode} - ${response.body}');
         return {
           'success': false,
           'message': 'Usuario o contraseña incorrectos.'
@@ -681,5 +637,4 @@ class AuthService {
       };
     }
   }
-
 }

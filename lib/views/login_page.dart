@@ -9,6 +9,7 @@ import 'home_page.dart';
 import 'package:provider/provider.dart';
 import 'package:manager_key/services/ubicacion_service.dart';
 import 'package:manager_key/models/user_model.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -31,11 +32,11 @@ class _LoginPageState extends State<LoginPage> {
         'username': 'j.quisbert.a',
         'group': 'Operador',
       },
-      'soporte': {
-        'email': 'soporte@test.com',
-        'username': 'carlos_soporte',
-        'group': 'soporte',
-      },
+      // 'soporte': {
+      //   'email': 'soporte@test.com',
+      //   'username': 'carlos_soporte',
+      //   'group': 'soporte',
+      // },
       'coordinador': {
         'email': 'coordinador@test.com',
         'username': 'test_coordinador',
@@ -70,7 +71,7 @@ class _LoginPageState extends State<LoginPage> {
       final ubicacionService = context.read<UbicacionService>();
       await ubicacionService.registrarUbicacion();
       ubicacionService.iniciarCapturaAutomatica(
-        intervalo: const Duration(minutes: 2),
+        intervalo: const Duration(minutes: 6),
       );
       print('✅ Servicio de geolocalización iniciado correctamente');
     } catch (e) {
@@ -109,12 +110,12 @@ class _LoginPageState extends State<LoginPage> {
     print('🚀 Navegando al Home...');
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (context) => HomePage(
-          onLogout: () {
-            print('🔄 Usuario cerró sesión desde HomePage');
-          },
-        ),
+        // ✅ CORRECCIÓN: Llama a HomePage sin el parámetro 'onLogout'.
+        // Usamos 'const' porque HomePage no tiene parámetros y no cambiará.
+        builder: (context) => const HomePage(),
       ),
+      // Esto elimina todas las rutas anteriores, para que el usuario no pueda
+      // volver a la pantalla de login con el botón de "atrás".
           (route) => false,
     );
   }
@@ -169,7 +170,20 @@ class _LoginPageState extends State<LoginPage> {
 
       if (result['success'] == true) {
         print('✅ Flujo de login completado en la UI');
-        await _startGeolocationService();
+
+        // ⛔ Se elimina la llamada directa al _startGeolocationService
+        // await _startGeolocationService();
+
+        // ✅ ⭐ INICIA EL SERVICIO EN SEGUNDO PLANO ⭐ ✅
+        final service = FlutterBackgroundService();
+        var isRunning = await service.isRunning();
+        if (!isRunning) {
+          service.startService();
+          print('▶️ Servicio de fondo INICIADO.');
+        } else {
+          print('ℹ️ Servicio de fondo ya estaba en ejecución.');
+        }
+
         _showSuccessAndNavigate();
       } else {
         _handleLoginError(result['message'] ?? 'Ocurrió un error desconocido.');
@@ -320,12 +334,12 @@ class _LoginPageState extends State<LoginPage> {
                             color: Colors.blue,
                             onTap: () => _quickLogin('operador'),
                           ),
-                          _buildQuickAccessButton(
-                            label: 'Soporte',
-                            icon: Icons.support_agent,
-                            color: Colors.orange,
-                            onTap: () => _quickLogin('soporte'),
-                          ),
+                          // _buildQuickAccessButton(
+                          //   label: 'Soporte',
+                          //   icon: Icons.support_agent,
+                          //   color: Colors.orange,
+                          //   onTap: () => _quickLogin('soporte'),
+                          // ),
                           _buildQuickAccessButton(
                             label: 'Coordinador',
                             icon: Icons.admin_panel_settings,

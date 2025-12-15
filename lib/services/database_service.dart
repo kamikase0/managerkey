@@ -45,7 +45,7 @@ class DatabaseService {
 
     return openDatabase(
       path,
-      version: 10,
+      version: 12,
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
       onDowngrade: onDatabaseDowngradeDelete,
@@ -1208,6 +1208,9 @@ class DatabaseService {
         case 11:
           await _migracionAgregarIdOperadorV11(db); // <-- NUEVA MIGRACIÓN
           break;
+        case 12:
+          await _upgradeToVersion12(db);
+          break;
       }
     }
 
@@ -1362,6 +1365,25 @@ class DatabaseService {
       } catch (e2) {
         print('❌ Error crítico restaurando tabla: $e2');
       }
+    }
+  }
+
+  // Agrega esta nueva función de migración
+  Future<void> _upgradeToVersion12(Database db) async {
+    print('🔧 Migrando a versión 12: Renombrar columna operador -> id_operador en reportes_diarios');
+    try {
+      final columns = await db.rawQuery('PRAGMA table_info(reportes_diarios)');
+      final columnNames = columns.map((col) => col['name'] as String).toList();
+
+      // Solo renombra si 'operador' existe y 'id_operador' no
+      if (columnNames.contains('operador') && !columnNames.contains('id_operador')) {
+        await db.execute('ALTER TABLE reportes_diarios RENAME COLUMN operador TO id_operador');
+        print('✅ Columna renombrada en reportes_diarios.');
+      } else {
+        print('ℹ️ No se necesita renombrar columna en reportes_diarios.');
+      }
+    } catch (e) {
+      print('⚠️ Error en migración versión 12: $e. Esto puede pasar si la tabla se recrea.');
     }
   }
 }

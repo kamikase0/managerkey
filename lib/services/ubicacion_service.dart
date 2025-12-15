@@ -264,7 +264,7 @@ class UbicacionService {
   }
 
   /// Iniciar captura automática de ubicaciones
-  void iniciarCapturaAutomatica({Duration intervalo = const Duration(minutes: 15)}) {
+  void iniciarCapturaAutomatica({Duration intervalo = const Duration(minutes: 5)}) {
     if (_locationTimer != null) {
       print('⚠️ Captura automática ya está activa');
       return;

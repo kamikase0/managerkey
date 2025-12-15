@@ -42,9 +42,12 @@ class SalidaLlegadaService {
     required String observaciones,
     required int idOperador,
     required int puntoEmpadronamientoId,
+    required bool sincronizarConServidor, // Aunque no se usa directamente, es bueno mantenerlo por consistencia
     String? latitud,
     String? longitud,
-    bool sincronizarConServidor = true,
+    // ⭐ 1. AÑADIR LOS NUEVOS PARÁMETROS OPCIONALES
+    int? idEstacion,
+    int? nroEstacion,
   }) {
     // Llama al método unificado con el estado 'LLEGADA'
     return _registrarMovimiento(
@@ -54,6 +57,9 @@ class SalidaLlegadaService {
       puntoEmpadronamientoId: puntoEmpadronamientoId,
       latitud: latitud,
       longitud: longitud,
+      // ⭐ 2. PASAR LOS NUEVOS VALORES AL MÉTODO CENTRAL
+      idEstacion: idEstacion,
+      nroEstacion: nroEstacion,
     );
   }
 
@@ -172,6 +178,8 @@ class SalidaLlegadaService {
 
   // En lib/services/salida_llegada_service.dart
 
+  // En: lib/services/salida_llegada_service.dart
+
   Future<Map<String, dynamic>> _registrarMovimiento({
     required String estado,
     required String observaciones,
@@ -179,31 +187,43 @@ class SalidaLlegadaService {
     required int puntoEmpadronamientoId,
     String? latitud,
     String? longitud,
+    int? idEstacion,
+    int? nroEstacion,
   }) async {
     final ahora = DateTime.now();
     final fechaHoraIso = ahora.toIso8601String();
-    final fechaHoraFormateada = fechaHoraIso.replaceFirst('T', ' ').split('.')[0];
+    final fechaHoraFormateada = fechaHoraIso.split('.').first.replaceFirst('T', ' ');
     final latitudSegura = latitud ?? '0.0';
     final longitudSegura = longitud ?? '0.0';
 
-    final datosParaApi = {
+    // --- Construcción del Payload Base ---
+    // Este mapa contiene los datos tal como los necesita la API y la BD.
+    // Es la "fuente de la verdad".
+    final datosBase = <String, dynamic>{
       'fecha_hora': fechaHoraFormateada,
-      'operador': idOperador, // El backend espera 'operador' según el JSON que me mostraste
+      'operador_id': idOperador, // Usamos el nombre de la BD local
       'estado': estado,
       'latitud': latitudSegura,
       'longitud': longitudSegura,
       'observaciones': observaciones,
-      'sincronizar': true,
-      'descripcion_reporte': null,
       'incidencias': 'Ubicación ${latitud != null ? "capturada" : "no capturada"}',
-      'centro_empadronamiento': puntoEmpadronamientoId, // El backend espera 'centro_empadronamiento'
+      'centro_empadronamiento_id': puntoEmpadronamientoId, // Usamos el nombre de la BD local
+      'descripcion_reporte': null,
     };
+
+    // Añadimos los campos opcionales si existen
+    if (idEstacion != null) {
+      datosBase['id_estacion'] = idEstacion;
+    }
+    if (nroEstacion != null) {
+      datosBase['nro_estacion'] = nroEstacion;
+    }
 
     // 1. VERIFICAR CONECTIVIDAD
     final connectivityResult = await Connectivity().checkConnectivity();
     final tieneInternet = connectivityResult != ConnectivityResult.none;
 
-    // 2. CASO ONLINE
+    // 2. CASO ONLINE: Intentar enviar al servidor
     if (tieneInternet) {
       print('🌐 Modo ONLINE. Intentando enviar registro de $estado...');
       try {
@@ -212,61 +232,51 @@ class SalidaLlegadaService {
           throw Exception('Token de autenticación no válido.');
         }
 
+        // Preparamos los datos PARA LA API, traduciendo nombres si es necesario
+        final datosParaApi = Map<String, dynamic>.from(datosBase);
+        datosParaApi['operador'] = datosParaApi.remove('operador_id');
+        datosParaApi['centro_empadronamiento'] = datosParaApi.remove('centro_empadronamiento_id');
+        datosParaApi['sincronizar'] = true; // El API espera un booleano
+
         final response = await _enviarRegistroAlServidor(datosParaApi, token);
 
-        // Si llegamos aquí, _enviarRegistroAlServidor fue exitoso
         print('✅ Éxito: $estado registrado y sincronizado directamente.');
         return {
           'exitoso': true,
           'mensaje': 'Registro de $estado enviado y sincronizado correctamente.',
           'sincronizado': true,
         };
-
       } catch (e) {
-        // ✅ CORRECCIÓN: El catch ahora se activará por errores de API o de red.
-        final errorMessage = e.toString();
-        print('⚠️ Falló el envío directo de $estado. Error: $errorMessage');
-
-        // Si el error es de API (como 404), es mejor informarlo que guardarlo localmente.
-        if (errorMessage.contains('Error de API')) {
-          return {
-            'exitoso': false,
-            'mensaje': 'El servidor no pudo procesar la solicitud. Revisa la URL y los datos enviados. ($errorMessage)',
-            'sincronizado': false,
-          };
-        }
-
-        // Si el error fue de red (timeout, sin conexión real), entonces sí guardamos localmente.
-        print('📱 Error de red detectado. Guardando registro de $estado localmente...');
-        // El flujo continúa hacia el guardado local...
+        print('⚠️ Falló el envío directo de $estado. Se guardará localmente. Error: $e');
+        // Si el envío falla (por red, timeout o error de API), el flujo continúa para guardar localmente.
       }
     }
 
-    // 3. CASO OFFLINE (o si el envío online falló por error de RED)
+    // 3. CASO OFFLINE (o si el envío online falló)
     try {
       print('📱 Guardando registro de $estado en base de datos local...');
       final db = await _databaseService.database;
 
-      // Prepara los datos para la base de datos local
-      final datosParaDbLocal = {
-        ...datosParaApi, // Reutilizamos los datos
-        'sincronizado': 0,
+      // Preparamos los datos PARA LA BASE DE DATOS LOCAL
+      final datosParaDbLocal = Map<String, dynamic>.from(datosBase);
+
+      // ✅ SOLUCIÓN AL WARNING: Convertimos el booleano a entero para sqflite
+      datosParaDbLocal['sincronizar'] = 1; // 1 para true
+
+      // Añadimos campos específicos del guardado local
+      datosParaDbLocal.addAll({
+        'sincronizado': 0, // 0 para false
         'fecha_sincronizacion': null,
         'id_servidor': null,
         'fecha_creacion_local': fechaHoraIso,
         'intentos': 0,
         'ultimo_intento': null,
-      };
-      // El backend quiere 'operador' y 'centro_empadronamiento', pero tu tabla local usa '_id'
-      // Aseguramos compatibilidad con la tabla local.
-      datosParaDbLocal['operador_id'] = datosParaDbLocal.remove('operador');
-      datosParaDbLocal['centro_empadronamiento_id'] = datosParaDbLocal.remove('centro_empadronamiento');
-
+      });
 
       final idLocal = await db.insert('registros_despliegue', datosParaDbLocal);
 
       if (idLocal == 0) {
-        throw Exception('No se pudo guardar el registro en la base de datos local.');
+        throw Exception('No se pudo guardar el registro en la base de datos local (retornó 0).');
       }
 
       print('✅ Registro de $estado guardado en DB local con ID: $idLocal.');
@@ -284,6 +294,122 @@ class SalidaLlegadaService {
       };
     }
   }
+
+
+
+
+  // Future<Map<String, dynamic>> _registrarMovimiento({
+  //   required String estado,
+  //   required String observaciones,
+  //   required int idOperador,
+  //   required int puntoEmpadronamientoId,
+  //   String? latitud,
+  //   String? longitud,
+  // }) async {
+  //   final ahora = DateTime.now();
+  //   final fechaHoraIso = ahora.toIso8601String();
+  //   final fechaHoraFormateada = fechaHoraIso.replaceFirst('T', ' ').split('.')[0];
+  //   final latitudSegura = latitud ?? '0.0';
+  //   final longitudSegura = longitud ?? '0.0';
+  //
+  //   final datosParaApi = {
+  //     'fecha_hora': fechaHoraFormateada,
+  //     'operador': idOperador, // El backend espera 'operador' según el JSON que me mostraste
+  //     'estado': estado,
+  //     'latitud': latitudSegura,
+  //     'longitud': longitudSegura,
+  //     'observaciones': observaciones,
+  //     'sincronizar': true,
+  //     'descripcion_reporte': null,
+  //     'incidencias': 'Ubicación ${latitud != null ? "capturada" : "no capturada"}',
+  //     'centro_empadronamiento': puntoEmpadronamientoId, // El backend espera 'centro_empadronamiento'
+  //   };
+  //
+  //   // 1. VERIFICAR CONECTIVIDAD
+  //   final connectivityResult = await Connectivity().checkConnectivity();
+  //   final tieneInternet = connectivityResult != ConnectivityResult.none;
+  //
+  //   // 2. CASO ONLINE
+  //   if (tieneInternet) {
+  //     print('🌐 Modo ONLINE. Intentando enviar registro de $estado...');
+  //     try {
+  //       final token = await _authService.getAccessToken();
+  //       if (token == null || token.isEmpty) {
+  //         throw Exception('Token de autenticación no válido.');
+  //       }
+  //
+  //       final response = await _enviarRegistroAlServidor(datosParaApi, token);
+  //
+  //       // Si llegamos aquí, _enviarRegistroAlServidor fue exitoso
+  //       print('✅ Éxito: $estado registrado y sincronizado directamente.');
+  //       return {
+  //         'exitoso': true,
+  //         'mensaje': 'Registro de $estado enviado y sincronizado correctamente.',
+  //         'sincronizado': true,
+  //       };
+  //
+  //     } catch (e) {
+  //       // ✅ CORRECCIÓN: El catch ahora se activará por errores de API o de red.
+  //       final errorMessage = e.toString();
+  //       print('⚠️ Falló el envío directo de $estado. Error: $errorMessage');
+  //
+  //       // Si el error es de API (como 404), es mejor informarlo que guardarlo localmente.
+  //       if (errorMessage.contains('Error de API')) {
+  //         return {
+  //           'exitoso': false,
+  //           'mensaje': 'El servidor no pudo procesar la solicitud. Revisa la URL y los datos enviados. ($errorMessage)',
+  //           'sincronizado': false,
+  //         };
+  //       }
+  //
+  //       // Si el error fue de red (timeout, sin conexión real), entonces sí guardamos localmente.
+  //       print('📱 Error de red detectado. Guardando registro de $estado localmente...');
+  //       // El flujo continúa hacia el guardado local...
+  //     }
+  //   }
+  //
+  //   // 3. CASO OFFLINE (o si el envío online falló por error de RED)
+  //   try {
+  //     print('📱 Guardando registro de $estado en base de datos local...');
+  //     final db = await _databaseService.database;
+  //
+  //     // Prepara los datos para la base de datos local
+  //     final datosParaDbLocal = {
+  //       ...datosParaApi, // Reutilizamos los datos
+  //       'sincronizado': 0,
+  //       'fecha_sincronizacion': null,
+  //       'id_servidor': null,
+  //       'fecha_creacion_local': fechaHoraIso,
+  //       'intentos': 0,
+  //       'ultimo_intento': null,
+  //     };
+  //     // El backend quiere 'operador' y 'centro_empadronamiento', pero tu tabla local usa '_id'
+  //     // Aseguramos compatibilidad con la tabla local.
+  //     datosParaDbLocal['operador_id'] = datosParaDbLocal.remove('operador');
+  //     datosParaDbLocal['centro_empadronamiento_id'] = datosParaDbLocal.remove('centro_empadronamiento');
+  //
+  //
+  //     final idLocal = await db.insert('registros_despliegue', datosParaDbLocal);
+  //
+  //     if (idLocal == 0) {
+  //       throw Exception('No se pudo guardar el registro en la base de datos local.');
+  //     }
+  //
+  //     print('✅ Registro de $estado guardado en DB local con ID: $idLocal.');
+  //     return {
+  //       'exitoso': true,
+  //       'mensaje': 'Registro de $estado guardado localmente. Se sincronizará cuando haya conexión.',
+  //       'sincronizado': false,
+  //     };
+  //   } catch (dbError) {
+  //     print('❌ Error fatal en _registrarMovimiento (DB): $dbError');
+  //     return {
+  //       'exitoso': false,
+  //       'mensaje': 'Ocurrió un error inesperado al guardar los datos: ${dbError.toString()}',
+  //       'sincronizado': false,
+  //     };
+  //   }
+  // }
 
 
   /// ===================================================================

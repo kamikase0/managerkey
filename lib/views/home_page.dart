@@ -1,5 +1,8 @@
+// C:/Users/Chuwi/AndroidStudioProjects/manager_key/lib/views/home_page.dart
+
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+//provider no es usado
+//import 'package:provider/provider.dart';
 import 'package:manager_key/views/operador/reporte_diario_view.dart';
 import 'package:manager_key/views/operador/salida_ruta_view.dart';
 import 'package:manager_key/views/operador/llegada_ruta_view.dart';
@@ -7,16 +10,20 @@ import 'package:manager_key/views/operador/historial_reportes_diarios_view.dart'
 import 'package:manager_key/views/tecnico/recepcion_view.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
-import '../services/reporte_sync_manager.dart'; // ✅ Cambiar a SyncManager más simple
+import '../services/reporte_sync_manager.dart';
 import '../services/ubicacion_service.dart';
-import '../widgets/sidebar.dart';
+// Asegúrate de que la ruta a tu Sidebar sea correcta
+import 'package:manager_key/widgets/sidebar.dart';
 import '../utils/alert_helper.dart';
 import 'login_page.dart';
 import 'operador_view.dart';
 import 'soporte_view.dart';
 import 'coordinador_view.dart';
+// Importa la nueva vista de bienvenida
+import '../views/logistico/bienvenida_view.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
-// ✅ Definir clases simples locales para evitar dependencias
+// Las clases SimpleSyncStatus y SimpleSyncState permanecen igual...
 enum SimpleSyncStatus {
   synced,
   syncing,
@@ -38,26 +45,28 @@ class SimpleSyncState {
   });
 }
 
-class HomePage extends StatefulWidget {
-  final Function() onLogout;
 
-  const HomePage({Key? key, required this.onLogout}) : super(key: key);
+class HomePage extends StatefulWidget {
+  // onLogout no parece ser usado en el constructor, si no es necesario se puede quitar
+  // final Function() onLogout;
+
+  const HomePage({Key? key /*, required this.onLogout*/}) : super(key: key);
 
   @override
   _HomePageState createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  String _activeView = 'operador';
+  // Vista por defecto será 'bienvenida'
+  String _activeView = 'bienvenida';
   String _userGroup = 'operador';
-  String _tipoOperador = 'Operador Urbano';
+  String _tipoOperador = ''; // Inicializar vacío
   int? _idOperador;
   User? _currentUser;
   late AuthService _authService;
   late UbicacionService _ubicacionService;
   late ReporteSyncManager _syncManager;
 
-  // Estado de sincronización simplificado
   SimpleSyncStatus _syncStatus = SimpleSyncStatus.synced;
   int _pendingReports = 0;
   bool _isSyncing = false;
@@ -73,20 +82,15 @@ class _HomePageState extends State<HomePage> {
     _initializeServices();
   }
 
-  /// ✅ SIMPLIFICADO: Inicializar servicios
   Future<void> _initializeServices() async {
     try {
-      // Iniciar ubicación
       await _ubicacionService.registrarUbicacion();
-
-      // Verificar estado de sincronización inicial
       await _updateSyncStatus();
     } catch (e) {
       print('❌ Error inicializando servicios: $e');
     }
   }
 
-  /// ✅ SIMPLIFICADO: Cargar datos del usuario
   Future<void> _loadUserData() async {
     try {
       final user = await _authService.getCurrentUser();
@@ -94,35 +98,126 @@ class _HomePageState extends State<HomePage> {
       if (user != null) {
         setState(() {
           _currentUser = user;
-          _userGroup = user.primaryGroup;
-          _tipoOperador = user.tipoOperador ?? 'Operador Urbano';
-          _idOperador = user.idOperador;
+          // Asumimos que `groups` es una lista y tomamos el primero como principal
+          _userGroup = user.groups.isNotEmpty ? user.groups.first : 'desconocido';
+          _tipoOperador = user.operador?.tipoOperador ?? '';
+          _idOperador = user.operador?.idOperador;
 
-          // Establecer vista inicial según grupo
-          switch (_userGroup.toLowerCase()) {
-            case 'operador':
-              _activeView = 'operador';
-              break;
-            case 'coordinador':
-              _activeView = 'coordinador';
-              break;
-            case 'tecnico':
-              _activeView = 'recepcion';
-              break;
-            case 'soporte':
-              _activeView = 'soporte';
-              break;
-            default:
-              _activeView = 'operador';
-          }
+          // ⭐ Establecer vista inicial a 'bienvenida' por defecto
+          _activeView = 'bienvenida';
         });
 
-        print('✅ Usuario cargado: ${user.username}');
+        print('✅ Usuario cargado: ${user.username}, Grupo: $_userGroup, Tipo Operador: $_tipoOperador');
       }
     } catch (e) {
       print('❌ Error al cargar usuario: $e');
     }
   }
+
+  // ✅ MODIFICADO: Lógica de vistas actualizada
+  Widget _getCurrentView() {
+    if (_currentUser == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // ⭐ Lógica de vistas actualizada para incluir 'Logistico' y 'bienvenida'
+    switch (_activeView) {
+      case 'bienvenida':
+        return BienvenidaView(
+          username: _currentUser!.username,
+          userRole: _tipoOperador.isNotEmpty ? _tipoOperador : _userGroup,
+        );
+
+      case 'llegada_ruta':
+        return LlegadaRutaView(
+          idOperador: _idOperador ?? 0,
+          tipoOperador: _tipoOperador, // Pasar el tipo de operador
+        );
+
+    // Casos existentes para Operador (ajustados)
+      case 'operador_view':
+        return const OperadorView();
+      case 'salida_ruta':
+        return SalidaRutaView(idOperador: _idOperador ?? 0);
+      case 'reporte_diario':
+        return const ReporteDiarioView();
+      case 'historial':
+        return const HistorialReportesDiariosView();
+
+    // Casos para otros roles
+      case 'soporte':
+        return const SoporteView();
+      case 'recepcion':
+        return const RecepcionView();
+      case 'coordinador':
+        return const CoordinadorView();
+
+      default:
+      // Por defecto, mostrar la bienvenida
+        return BienvenidaView(
+          username: _currentUser!.username,
+          userRole: _tipoOperador.isNotEmpty ? _tipoOperador : _userGroup,
+        );
+    }
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        // ... El AppBar no necesita cambios ...
+        title: FutureBuilder<String>(
+          future: _authService.getWelcomeMessage(),
+          builder: (context, snapshot) {
+            final welcomeMsg = snapshot.data ?? 'Sistema de Gestión';
+            return Text(
+              welcomeMsg.length > 20
+                  ? '${welcomeMsg.substring(0, 20)}...'
+                  : welcomeMsg,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+          },
+        ),
+        actions: [
+          _buildSyncIndicator(),
+          const SizedBox(width: 8),
+          _buildUserInfo(),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _logout,
+            tooltip: 'Cerrar Sesión',
+          ),
+        ],
+        backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
+        elevation: 2,
+      ),
+      // ✅ MODIFICADO: Pasar las propiedades correctas al Sidebar
+      drawer: Sidebar(
+        activeView: _activeView,
+        onViewChanged: (view) {
+          setState(() {
+            _activeView = view;
+          });
+          Navigator.of(context).pop();
+        },
+        userGroup: _userGroup,
+        tipoOperador: _tipoOperador,
+        // Tu sidebar necesita saber si el usuario es Rural/Urbano
+        // Asumo que tu modelo User tiene una propiedad como `isOperadorRural`
+        isOperadorRural: _currentUser?.operador?.tipoOperador == 'Operador Rural',
+      ),
+      body: _getCurrentView(),
+    );
+  }
+
+  // --- NO SE NECESITAN CAMBIOS EN LOS SIGUIENTES MÉTODOS ---
+  // _updateSyncStatus, _sincronizarManualmente, _buildSyncIndicator, _buildUserInfo, _logout, dispose
+  // ... (Pega aquí el resto de tus métodos sin modificar)
 
   /// ✅ SIMPLIFICADO: Actualizar estado de sincronización
   Future<void> _updateSyncStatus() async {
@@ -141,58 +236,6 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print('❌ Error actualizando estado de sincronización: $e');
-    }
-  }
-
-  /// ✅ SIMPLIFICADO: Lógica de vistas
-  Widget _getCurrentView() {
-    if (_currentUser == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    // Lógica para grupo "Operador"
-    if (_userGroup.toLowerCase() == 'operador') {
-      if (_currentUser!.isOperadorRural) {
-        switch (_activeView) {
-          case 'operador':
-            return const OperadorView();
-          case 'salida_ruta':
-            return SalidaRutaView(idOperador: _idOperador ?? 0);
-          case 'llegada_ruta':
-            return LlegadaRutaView(idOperador: _idOperador ?? 0);
-          case 'reporte_diario':
-            return const ReporteDiarioView();
-          case 'historial':
-            return const HistorialReportesDiariosView();
-          default:
-            return const OperadorView();
-        }
-      } else if (_currentUser!.isOperadorUrbano) {
-        switch (_activeView) {
-          case 'operador':
-            return const OperadorView();
-          case 'llegada_ruta':
-            return LlegadaRutaView(idOperador: _idOperador ?? 0);
-          case 'reporte_diario':
-            return const ReporteDiarioView();
-          case 'historial':
-            return const HistorialReportesDiariosView();
-          default:
-            return const OperadorView();
-        }
-      }
-    }
-
-    // Lógica para otros roles
-    switch (_activeView) {
-      case 'soporte':
-        return const SoporteView();
-      case 'recepcion':
-        return const RecepcionView();
-      case 'coordinador':
-        return const CoordinadorView();
-      default:
-        return const Center(child: Text("Bienvenido"));
     }
   }
 
@@ -328,7 +371,8 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            _currentUser!.groups.join(', '),
+            // Muestra el tipo de operador si existe, si no el grupo
+            _tipoOperador.isNotEmpty ? _tipoOperador : _currentUser!.groups.join(', '),
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
@@ -337,7 +381,7 @@ class _HomePageState extends State<HomePage> {
           ),
           if (_tipoOperador.isNotEmpty)
             Text(
-              _tipoOperador,
+              _currentUser!.username, // Muestra el username debajo
               style: const TextStyle(
                 fontSize: 10,
                 color: Colors.white70,
@@ -352,16 +396,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _logout() async {
     final confirmarSalida = await AlertHelper.mostrarDialogoDeSalida(context);
 
-    if (!confirmarSalida) return;
+    if (confirmarSalida == null || !confirmarSalida) return;
 
     try {
-      // Detener servicios
       _ubicacionService.detenerCapturaAutomatica();
-
-      // Hacer logout en AuthService
       await _authService.logout();
 
-      // Navegar a LoginPage
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -379,55 +419,6 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: FutureBuilder<String>(
-          future: _authService.getWelcomeMessage(),
-          builder: (context, snapshot) {
-            final welcomeMsg = snapshot.data ?? 'Sistema de Gestión';
-            return Text(
-              welcomeMsg.length > 20
-                  ? '${welcomeMsg.substring(0, 20)}...'
-                  : welcomeMsg,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            );
-          },
-        ),
-        actions: [
-          _buildSyncIndicator(),
-          const SizedBox(width: 8),
-          _buildUserInfo(),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: _logout,
-            tooltip: 'Cerrar Sesión',
-          ),
-        ],
-        backgroundColor: Colors.blue[700],
-        foregroundColor: Colors.white,
-        elevation: 2,
-      ),
-      drawer: Sidebar(
-        activeView: _activeView,
-        onViewChanged: (view) {
-          setState(() {
-            _activeView = view;
-          });
-          Navigator.of(context).pop();
-        },
-        userGroup: _userGroup,
-        tipoOperador: _tipoOperador,
-        isOperadorRural: _currentUser?.isOperadorRural ?? false,
-      ),
-      body: _getCurrentView(),
-    );
   }
 
   @override

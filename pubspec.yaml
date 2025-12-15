@@ -26,6 +26,7 @@ dependencies:
   permission_handler: ^11.0.1
   flutter_launcher_icons: ^0.13.1
   intl: ^0.18.1
+  flutter_background_service: ^5.0.0
 
 dev_dependencies:
   flutter_test:

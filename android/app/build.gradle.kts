@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.manager_key"
-        minSdk = flutter.minSdkVersion
+        minSdk = 29
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"

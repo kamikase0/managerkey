@@ -10,8 +10,9 @@ import '../../utils/alert_helper.dart';
 
 class LlegadaRutaView extends StatefulWidget {
   final int idOperador;
+  final String tipoOperador;
 
-  const LlegadaRutaView({Key? key, required this.idOperador}) : super(key: key);
+  const LlegadaRutaView({Key? key, required this.idOperador, required this.tipoOperador}) : super(key: key);
 
   @override
   _LlegadaRutaViewState createState() => _LlegadaRutaViewState();
@@ -779,13 +780,9 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
     }
   }
 
-// En lib/views/operador/llegada_ruta_view.dart
-// ... dentro de la clase _LlegadaRutaViewState
+  // lib/views/operador/llegada_ruta_view.dart
 
-
-  // C:/Users/Chuwi/AndroidStudioProjects/manager_key/lib/views/operador/llegada_ruta_view.dart
-
-// ... dentro de la clase _LlegadaRutaViewState
+// ... (El resto de tu clase _LlegadaRutaViewState se mantiene igual hasta el método _registrarLlegada)
 
   Future<void> _registrarLlegada() async {
     // 1. Validación de datos de la UI
@@ -817,6 +814,18 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
         }
       }
 
+      // ✅✅✅ CORRECCIÓN DE SINTAXIS Y LÓGICA ✅✅✅
+      int? idEstacion;
+      int? nroEstacion;
+
+      // Si el tipo de operador es 'Logistico', usamos los valores especiales.
+      // Usamos .toLowerCase() para evitar errores por mayúsculas/minúsculas.
+      if (widget.tipoOperador.toLowerCase() == 'logistico') {
+        idEstacion = 999;
+        nroEstacion = 99999;
+        print('🚚 Usuario Logístico detectado. Usando valores especiales para estación: id=$idEstacion, nro=$nroEstacion');
+      }
+
       // 4. Llamar al servicio para registrar la llegada
       final resultado = await _salidaLlegadaService.registrarLlegadaConEmpadronamiento(
         observaciones: _observacionesController.text,
@@ -825,22 +834,24 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
         puntoEmpadronamientoId: _puntoEmpadronamientoId!,
         latitud: _latitud,
         longitud: _longitud,
+        // ✅✅✅ PASAR LOS PARÁMETROS AL SERVICIO ✅✅✅
+        idEstacion: idEstacion,
+        nroEstacion: nroEstacion,
       );
 
       if (!mounted) return;
 
-      // ✅ CIERRA la alerta de "Cargando..." ANTES de mostrar la de éxito
       AlertHelper.closeLoading(context);
 
       // 5. Mostrar resultado al usuario usando tus alertas
       if (resultado['exitoso']) {
         final bool esSincronizado = resultado['sincronizado'] == true;
 
-        // ✅✅✅ CORRECCIÓN APLICADA AQUÍ ✅✅✅
-        // Guardamos la función de limpieza para ejecutarla después
         final postAction = () {
           _limpiarFormulario();
-          setState(() {}); // Actualiza la UI (ej. el monitor de sincronización)
+          // Forzar la reconstrucción de los widgets que dependen de FutureBuilders
+          // como el monitor de sincronización.
+          setState(() {});
         };
 
         if (esSincronizado) {
@@ -849,11 +860,8 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
             context: context,
             title: '¡Llegada Registrada!',
             text: 'Los datos se guardaron y sincronizaron con el servidor.',
-            // onConfirm ahora solo cierra la alerta, la acción se hace después.
             onConfirm: () {
-              // Cerramos la alerta de éxito manualmente para tener control
               if (mounted) Navigator.of(context, rootNavigator: true).pop();
-              // Ejecutamos la acción después de cerrar
               postAction();
             },
           );
@@ -863,11 +871,8 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
             context: context,
             title: '¡Llegada Guardada!',
             text: 'Registro guardado localmente. Se sincronizará cuando haya conexión.',
-            // onConfirm ahora solo cierra la alerta
             onConfirm: () {
-              // Cerramos la alerta de información manualmente
               if (mounted) Navigator.of(context, rootNavigator: true).pop();
-              // Ejecutamos la acción después de cerrar
               postAction();
             },
           );
@@ -895,6 +900,8 @@ class _LlegadaRutaViewState extends State<LlegadaRutaView> {
       }
     }
   }
+
+// } // Fin de la clase _LlegadaRutaViewState
 
 
 }
