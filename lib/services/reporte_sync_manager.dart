@@ -1,256 +1,306 @@
 // lib/services/reporte_sync_manager.dart
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:manager_key/database/database_helper.dart';
-import 'package:manager_key/models/reporte_diario_local.dart';
-import 'package:manager_key/services/api_service.dart';
-import 'package:manager_key/services/auth_service.dart';
+import '../config/enviroment.dart';
+import '../database/database_helper.dart';
+import '../services/auth_service.dart';
+import '../models/reporte_diario_local.dart';
 
 class ReporteSyncManager {
-  final DatabaseHelper _dbHelper = DatabaseHelper();
   final AuthService _authService = AuthService();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
 
-  Future<bool> tieneConexionInternet() async {
+  /// Verificar conexión a internet
+  Future<bool> verificarConexion() async {
     try {
       final connectivity = Connectivity();
       final result = await connectivity.checkConnectivity();
       return result != ConnectivityResult.none;
     } catch (e) {
-      print('Error verificando conexión: $e');
+      print('❌ Error verificando conexión: $e');
       return false;
     }
   }
 
-  // Obtener reportes (inteligente según conexión)
-  Future<List<ReporteDiarioLocal>> obtenerReportes() async {
-    final tieneConexion = await tieneConexionInternet();
-    final idOperador = await _authService.getIdOperador();
-
-    if (idOperador == null) {
-      return [];
-    }
-
-    if (tieneConexion) {
-      // Caso 1: Con internet - obtener del servidor
-      return await _obtenerDesdeServidorYActualizarLocal(idOperador);
-    } else {
-      // Caso 2: Sin internet - obtener solo de base local
-      return await _dbHelper.getReportesPorOperador(idOperador);
-    }
-  }
-
-// En ReporteSyncManager.dart - CORREGIR MÉTODO _obtenerDesdeServidorYActualizarLocal:
-  Future<List<ReporteDiarioLocal>> _obtenerDesdeServidorYActualizarLocal(int idOperador) async {
-    try {
-      final token = await _authService.getAccessToken();
-      if (token == null) return [];
-
-      final apiService = ApiService(accessToken: token);
-      final reportesServidor = await apiService.obtenerReportesPorOperador(idOperador);
-
-      // Convertir cada reporte del servidor a ReporteDiarioLocal
-      final reportesLocales = <ReporteDiarioLocal>[];
-
-      for (var reporte in reportesServidor) {
-        try {
-          final reporteLocal = ReporteDiarioLocal(
-            idServer: reporte['id'],
-            contadorInicialR: reporte['contador_inicial_r'] ?? '',
-            contadorFinalR: reporte['contador_final_r'] ?? '',
-            saltosenR: (reporte['saltosenR'] ?? 0) as int,
-            contadorR: (reporte['registro_r'] ?? 0).toString(),
-            contadorInicialC: reporte['contador_inicial_c'] ?? '',
-            contadorFinalC: reporte['contador_final_c'] ?? '',
-            saltosenC: (reporte['saltosenC'] ?? 0) as int,
-            contadorC: (reporte['registro_c'] ?? 0).toString(),
-            fechaReporte: reporte['fecha_reporte'] ?? '',
-            observaciones: reporte['observaciones'],
-            incidencias: reporte['incidencias'],
-            estado: 'sincronizado',
-            idOperador: idOperador,
-            estacionId: (reporte['estacion'] ?? 0) as int,
-            fechaCreacion: DateTime.parse(reporte['fecha_registro'] ?? DateTime.now().toIso8601String()),
-            fechaSincronizacion: DateTime.now(),
-            centroEmpadronamiento: reporte['centro_empadronamiento'] != null
-                ? (reporte['centro_empadronamiento'] as int)
-                : null,
-            sincronizar: true,
-          );
-
-          // Verificar si ya existe
-          final existe = await _dbHelper.existeReporteParaFecha(
-              reporteLocal.fechaReporte,
-              reporteLocal.idOperador
-          );
-
-          if (!existe) {
-            await _dbHelper.insertReporte(reporteLocal);
-          }
-
-          reportesLocales.add(reporteLocal);
-        } catch (e) {
-          print('❌ Error convirtiendo reporte: $e');
-        }
-      }
-
-      return reportesLocales;
-
-    } catch (e) {
-      print('❌ Error obteniendo del servidor: $e');
-      return [];
-    }
-  }
-
-  // Guardar nuevo reporte (inteligente según conexión)
+  /// Guardar reporte (intenta servidor primero, sino guarda local)
   Future<Map<String, dynamic>> guardarReporte(ReporteDiarioLocal reporte) async {
-    final tieneConexion = await tieneConexionInternet();
+    try {
+      final tieneConexion = await verificarConexion();
 
-    if (tieneConexion) {
-      // Caso 1: Con internet - intentar enviar al servidor
-      try {
-        final token = await _authService.getAccessToken();
-        if (token == null) {
-          throw Exception('No hay token disponible');
-        }
-
-        final apiService = ApiService(accessToken: token);
-        final resultado = await apiService.enviarReporteDiario(reporte.toApiJson());
+      if (tieneConexion) {
+        // Intentar enviar al servidor
+        print('🌐 Conexión disponible - Enviando al servidor...');
+        final resultado = await _enviarAlServidor(reporte);
 
         if (resultado['success'] == true) {
-          // Guardar como sincronizado
-          reporte.idServer = resultado['id'];
-          reporte.estado = 'sincronizado';
-          reporte.fechaSincronizacion = DateTime.now();
+          // ✅ Enviado exitosamente al servidor
+          print('✅ Reporte enviado al servidor con ID: ${resultado['server_id']}');
 
-          final id = await _dbHelper.insertReporte(reporte);
+          // Marcar como sincronizado y guardar localmente
+          reporte.marcarComoSincronizado(
+            resultado['server_id']!,
+            DateTime.now(),
+          );
+
+          // Guardar en BD local
+          await _dbHelper.insertReporte(reporte);
+          print('💾 Reporte guardado localmente con estado: sincronizado');
 
           return {
             'success': true,
-            'message': 'Reporte enviado exitosamente',
-            'server_id': resultado['id'],
-            'local_id': id,
             'sincronizado': true,
+            'message': 'Reporte enviado y guardado exitosamente',
+            'server_id': resultado['server_id'],
           };
         } else {
-          throw Exception('Error del servidor: ${resultado['message']}');
+          // ❌ Falló el envío al servidor - guardar como pendiente
+          print('⚠️ Falló envío al servidor: ${resultado['message']}');
+          return await _guardarComoPendiente(reporte);
         }
-      } catch (e) {
-        // Si falla el servidor, guardar como pendiente
-        reporte.estado = 'pendiente';
-        final id = await _dbHelper.insertReporte(reporte);
-
-        return {
-          'success': true,
-          'message': 'Reporte guardado localmente (se sincronizará después)',
-          'local_id': id,
-          'sincronizado': false,
-          'error': e.toString(),
-        };
+      } else {
+        // 📱 Sin conexión - guardar como pendiente
+        print('📱 Sin conexión - Guardando como pendiente');
+        return await _guardarComoPendiente(reporte);
       }
-    } else {
-      // Caso 2: Sin internet - guardar como pendiente
-      reporte.estado = 'pendiente';
-      final id = await _dbHelper.insertReporte(reporte);
-
+    } catch (e) {
+      print('❌ Error en guardarReporte: $e');
       return {
-        'success': true,
-        'message': 'Reporte guardado localmente (modo offline)',
-        'local_id': id,
+        'success': false,
         'sincronizado': false,
+        'message': 'Error: ${e.toString()}',
       };
     }
   }
 
-  // Sincronizar reportes pendientes
-  Future<Map<String, dynamic>> sincronizarReportesPendientes() async {
+  /// Enviar reporte al servidor
+  Future<Map<String, dynamic>> _enviarAlServidor(ReporteDiarioLocal reporte) async {
     try {
-      final tieneConexion = await tieneConexionInternet();
-      if (!tieneConexion) {
-        return {
-          'success': false,
-          'message': 'No hay conexión a internet',
-        };
-      }
-
       final token = await _authService.getAccessToken();
-      if (token == null) {
+      if (token == null || token.isEmpty) {
         return {
           'success': false,
           'message': 'No hay token de autenticación',
         };
       }
 
+      final url = Uri.parse('${Enviroment.apiUrlDev}reportesdiarios/');
+      final body = jsonEncode(reporte.toApiJson());
+
+      print('🔔 Enviando POST → $url');
+      print('🧾 Body: $body');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+
+      print('✅ Response status final: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        return {
+          'success': true,
+          'message': 'Reporte enviado exitosamente',
+          'server_id': responseData['id'],
+          'data': responseData,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Error del servidor: ${response.statusCode}',
+          'status_code': response.statusCode,
+        };
+      }
+    } catch (e) {
+      print('❌ Error enviando al servidor: $e');
+      return {
+        'success': false,
+        'message': 'Error de conexión: ${e.toString()}',
+      };
+    }
+  }
+
+  /// Guardar reporte como pendiente en BD local
+  Future<Map<String, dynamic>> _guardarComoPendiente(ReporteDiarioLocal reporte) async {
+    try {
+      reporte.marcarComoPendiente();
+      final id = await _dbHelper.insertReporte(reporte);
+
+      print('💾 Reporte guardado localmente como PENDIENTE con ID: $id');
+
+      return {
+        'success': true,
+        'sincronizado': false,
+        'message': 'Reporte guardado localmente. Se sincronizará cuando haya conexión.',
+        'local_id': id,
+      };
+    } catch (e) {
+      print('❌ Error guardando localmente: $e');
+      return {
+        'success': false,
+        'sincronizado': false,
+        'message': 'Error guardando localmente: ${e.toString()}',
+      };
+    }
+  }
+
+  /// Sincronizar reportes pendientes
+  Future<Map<String, dynamic>> sincronizarReportesPendientes() async {
+    try {
+      final tieneConexion = await verificarConexion();
+      if (!tieneConexion) {
+        return {
+          'success': false,
+          'message': 'No hay conexión a internet',
+          'sincronizados': 0,
+        };
+      }
+
       final pendientes = await _dbHelper.getReportesPendientes();
+      print('📊 Reportes pendientes para sincronizar: ${pendientes.length}');
 
       if (pendientes.isEmpty) {
         return {
           'success': true,
           'message': 'No hay reportes pendientes',
+          'sincronizados': 0,
         };
       }
 
-      print('🔄 Sincronizando ${pendientes.length} reportes pendientes...');
-
-      final apiService = ApiService(accessToken: token);
-      int exitosos = 0;
-      int fallidos = 0;
+      int sincronizadosExitosos = 0;
+      int sincronizadosFallidos = 0;
 
       for (var reporte in pendientes) {
         try {
-          final resultado = await apiService.enviarReporteDiario(reporte.toApiJson());
+          final resultado = await _enviarAlServidor(reporte);
 
           if (resultado['success'] == true) {
-            // Marcar como sincronizado
-            reporte.idServer = resultado['id'];
-            reporte.estado = 'sincronizado';
-            reporte.fechaSincronizacion = DateTime.now();
-
+            reporte.marcarComoSincronizado(
+              resultado['server_id']!,
+              DateTime.now(),
+            );
             await _dbHelper.updateReporte(reporte);
-            exitosos++;
+            sincronizadosExitosos++;
             print('✅ Reporte ${reporte.id} sincronizado');
           } else {
-            reporte.estado = 'fallido';
-            await _dbHelper.updateReporte(reporte);
-            fallidos++;
-            print('❌ Reporte ${reporte.id} falló');
+            sincronizadosFallidos++;
+            print('❌ Falló sincronización del reporte ${reporte.id}');
           }
         } catch (e) {
-          reporte.estado = 'fallido';
-          await _dbHelper.updateReporte(reporte);
-          fallidos++;
-          print('❌ Error sincronizando reporte ${reporte.id}: $e');
+          sincronizadosFallidos++;
+          print('❌ Error sincronizando reporte: $e');
         }
       }
 
       return {
-        'success': fallidos == 0,
-        'message': 'Sincronización completada: $exitosos exitosos, $fallidos fallidos',
-        'exitosos': exitosos,
-        'fallidos': fallidos,
+        'success': sincronizadosFallidos == 0,
+        'message': sincronizadosFallidos == 0
+            ? '✅ Todos los reportes sincronizados'
+            : '⚠️ Sincronización parcial: $sincronizadosExitosos exitosos, $sincronizadosFallidos fallidos',
+        'sincronizados': sincronizadosExitosos,
+        'fallidos': sincronizadosFallidos,
         'total': pendientes.length,
       };
-
     } catch (e) {
-      print('❌ Error en sincronización: $e');
+      print('❌ Error sincronizando reportes pendientes: $e');
       return {
         'success': false,
         'message': 'Error: ${e.toString()}',
-      };
-    }
-  }
-
-  // Obtener estadísticas
-  Future<Map<String, dynamic>> obtenerEstadisticas() async {
-    final idOperador = await _authService.getIdOperador();
-
-    if (idOperador == null) {
-      return {
-        'total': 0,
         'sincronizados': 0,
-        'pendientes': 0,
-        'fallidos': 0,
       };
     }
-
-    return await _dbHelper.getEstadisticasPorOperador(idOperador);
   }
+
+  // En reporte_sync_manager.dart
+
+  /// Descargar reportes desde la API y guardarlos localmente
+  Future<void> descargarYGuardarReportesDesdeApi() async {
+    try {
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+
+      if (idOperador == null) {
+        throw Exception('No se pudo obtener el ID del operador');
+      }
+
+      final token = await _authService.getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('No hay token de autenticación');
+      }
+
+      final url = Uri.parse('${Enviroment.apiUrlDev}reportesdiarios/');
+      print('📡 Descargando reportes desde: $url');
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+
+        // Filtrar solo los reportes del operador actual
+        final reportesOperador = data.where((json) => json['operador'] == idOperador).toList();
+
+        print('✅ Descargados ${reportesOperador.length} reportes del servidor');
+
+        // Guardar cada reporte en la BD local
+        for (var reporteJson in reportesOperador) {
+          final reporte = ReporteDiarioLocal.fromApiMap(reporteJson);
+          await _dbHelper.insertarOIgnorarReporte(reporte);
+        }
+
+        print('💾 Reportes guardados en BD local');
+      } else {
+        throw Exception('Error del servidor: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error descargando reportes: $e');
+      rethrow;
+    }
+  }
+
+  /// Obtener todos los reportes del operador desde BD local
+  Future<List<ReporteDiarioLocal>> obtenerReportes() async {
+    try {
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+
+      if (idOperador == null) {
+        return [];
+      }
+
+      return await _dbHelper.getReportesPorOperador(idOperador);
+    } catch (e) {
+      print('❌ Error obteniendo reportes locales: $e');
+      return [];
+    }
+  }
+
+  /// Obtener estadísticas de reportes
+  Future<Map<String, dynamic>> obtenerEstadisticas() async {
+    try {
+      final userData = await _authService.getCurrentUser();
+      final idOperador = userData?.operador?.idOperador;
+
+      if (idOperador == null) {
+        return {'total': 0, 'sincronizados': 0, 'pendientes': 0};
+      }
+
+      return await _dbHelper.getEstadisticasPorOperador(idOperador);
+    } catch (e) {
+      print('❌ Error obteniendo estadísticas: $e');
+      return {'total': 0, 'sincronizados': 0, 'pendientes': 0};
+    }
+  }
+
 }

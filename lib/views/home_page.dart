@@ -1,8 +1,6 @@
-// C:/Users/Chuwi/AndroidStudioProjects/manager_key/lib/views/home_page.dart
+
 
 import 'package:flutter/material.dart';
-//provider no es usado
-//import 'package:provider/provider.dart';
 import 'package:manager_key/views/operador/reporte_diario_view.dart';
 import 'package:manager_key/views/operador/salida_ruta_view.dart';
 import 'package:manager_key/views/operador/llegada_ruta_view.dart';
@@ -12,18 +10,14 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/reporte_sync_manager.dart';
 import '../services/ubicacion_service.dart';
-// Asegúrate de que la ruta a tu Sidebar sea correcta
 import 'package:manager_key/widgets/sidebar.dart';
 import '../utils/alert_helper.dart';
 import 'login_page.dart';
 import 'operador_view.dart';
 import 'soporte_view.dart';
 import 'coordinador_view.dart';
-// Importa la nueva vista de bienvenida
 import '../views/logistico/bienvenida_view.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
 
-// Las clases SimpleSyncStatus y SimpleSyncState permanecen igual...
 enum SimpleSyncStatus {
   synced,
   syncing,
@@ -31,38 +25,20 @@ enum SimpleSyncStatus {
   error,
 }
 
-class SimpleSyncState {
-  final bool isSyncing;
-  final bool offlineMode;
-  final bool hasPendingSync;
-  final int pendingReports;
-
-  SimpleSyncState({
-    required this.isSyncing,
-    required this.offlineMode,
-    required this.hasPendingSync,
-    required this.pendingReports,
-  });
-}
-
-
 class HomePage extends StatefulWidget {
-  // onLogout no parece ser usado en el constructor, si no es necesario se puede quitar
-  // final Function() onLogout;
-
-  const HomePage({Key? key /*, required this.onLogout*/}) : super(key: key);
+  const HomePage({Key? key}) : super(key: key);
 
   @override
   _HomePageState createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  // Vista por defecto será 'bienvenida'
   String _activeView = 'bienvenida';
   String _userGroup = 'operador';
-  String _tipoOperador = ''; // Inicializar vacío
+  String _tipoOperador = '';
   int? _idOperador;
   User? _currentUser;
+
   late AuthService _authService;
   late UbicacionService _ubicacionService;
   late ReporteSyncManager _syncManager;
@@ -98,29 +74,24 @@ class _HomePageState extends State<HomePage> {
       if (user != null) {
         setState(() {
           _currentUser = user;
-          // Asumimos que `groups` es una lista y tomamos el primero como principal
           _userGroup = user.groups.isNotEmpty ? user.groups.first : 'desconocido';
           _tipoOperador = user.operador?.tipoOperador ?? '';
           _idOperador = user.operador?.idOperador;
-
-          // ⭐ Establecer vista inicial a 'bienvenida' por defecto
           _activeView = 'bienvenida';
         });
 
-        print('✅ Usuario cargado: ${user.username}, Grupo: $_userGroup, Tipo Operador: $_tipoOperador');
+        print('✅ Usuario cargado: ${user.username}, Grupo: $_userGroup, Tipo: $_tipoOperador');
       }
     } catch (e) {
       print('❌ Error al cargar usuario: $e');
     }
   }
 
-  // ✅ MODIFICADO: Lógica de vistas actualizada
   Widget _getCurrentView() {
     if (_currentUser == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // ⭐ Lógica de vistas actualizada para incluir 'Logistico' y 'bienvenida'
     switch (_activeView) {
       case 'bienvenida':
         return BienvenidaView(
@@ -131,10 +102,9 @@ class _HomePageState extends State<HomePage> {
       case 'llegada_ruta':
         return LlegadaRutaView(
           idOperador: _idOperador ?? 0,
-          tipoOperador: _tipoOperador, // Pasar el tipo de operador
+          tipoOperador: _tipoOperador,
         );
 
-    // Casos existentes para Operador (ajustados)
       case 'operador_view':
         return const OperadorView();
       case 'salida_ruta':
@@ -144,7 +114,6 @@ class _HomePageState extends State<HomePage> {
       case 'historial':
         return const HistorialReportesDiariosView();
 
-    // Casos para otros roles
       case 'soporte':
         return const SoporteView();
       case 'recepcion':
@@ -153,7 +122,6 @@ class _HomePageState extends State<HomePage> {
         return const CoordinadorView();
 
       default:
-      // Por defecto, mostrar la bienvenida
         return BienvenidaView(
           username: _currentUser!.username,
           userRole: _tipoOperador.isNotEmpty ? _tipoOperador : _userGroup,
@@ -161,12 +129,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // ... El AppBar no necesita cambios ...
         title: FutureBuilder<String>(
           future: _authService.getWelcomeMessage(),
           builder: (context, snapshot) {
@@ -196,7 +162,6 @@ class _HomePageState extends State<HomePage> {
         foregroundColor: Colors.white,
         elevation: 2,
       ),
-      // ✅ MODIFICADO: Pasar las propiedades correctas al Sidebar
       drawer: Sidebar(
         activeView: _activeView,
         onViewChanged: (view) {
@@ -207,39 +172,33 @@ class _HomePageState extends State<HomePage> {
         },
         userGroup: _userGroup,
         tipoOperador: _tipoOperador,
-        // Tu sidebar necesita saber si el usuario es Rural/Urbano
-        // Asumo que tu modelo User tiene una propiedad como `isOperadorRural`
         isOperadorRural: _currentUser?.operador?.tipoOperador == 'Operador Rural',
       ),
       body: _getCurrentView(),
     );
   }
 
-  // --- NO SE NECESITAN CAMBIOS EN LOS SIGUIENTES MÉTODOS ---
-  // _updateSyncStatus, _sincronizarManualmente, _buildSyncIndicator, _buildUserInfo, _logout, dispose
-  // ... (Pega aquí el resto de tus métodos sin modificar)
-
-  /// ✅ SIMPLIFICADO: Actualizar estado de sincronización
+  /// ✅ CORREGIDO: Usar verificarConexion() en lugar de tieneConexionInternet()
   Future<void> _updateSyncStatus() async {
     try {
-      final tieneConexion = await _syncManager.tieneConexionInternet();
-      final idOperador = await _authService.getIdOperador();
+      // ✅ Cambio: verificarConexion() en lugar de tieneConexionInternet()
+      final tieneConexion = await _syncManager.verificarConexion();
+      final stats = await _syncManager.obtenerEstadisticas();
 
-      if (idOperador != null) {
-        final stats = await _syncManager.obtenerEstadisticas();
-        setState(() {
-          _pendingReports = stats['pendientes'] ?? 0;
-          _syncStatus = tieneConexion
-              ? (_pendingReports > 0 ? SimpleSyncStatus.pending : SimpleSyncStatus.synced)
-              : SimpleSyncStatus.pending;
-        });
-      }
+      setState(() {
+        _pendingReports = stats['pendientes'] ?? 0;
+        _syncStatus = tieneConexion
+            ? (_pendingReports > 0 ? SimpleSyncStatus.pending : SimpleSyncStatus.synced)
+            : SimpleSyncStatus.pending;
+      });
     } catch (e) {
       print('❌ Error actualizando estado de sincronización: $e');
+      setState(() {
+        _syncStatus = SimpleSyncStatus.error;
+      });
     }
   }
 
-  /// ✅ SIMPLIFICADO: Sincronización manual
   Future<void> _sincronizarManualmente() async {
     if (_isSyncing) return;
 
@@ -258,107 +217,133 @@ class _HomePageState extends State<HomePage> {
 
       final resultado = await _syncManager.sincronizarReportesPendientes();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(resultado['success'] == true
-              ? '✅ Sincronización completada'
-              : '❌ Error en sincronización'),
-          backgroundColor: resultado['success'] == true ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              resultado['success'] == true
+                  ? '✅ ${resultado['sincronizados'] ?? 0} reporte(s) sincronizado(s)'
+                  : '❌ ${resultado['message'] ?? 'Error en sincronización'}',
+            ),
+            backgroundColor: resultado['success'] == true ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
 
       await _updateSyncStatus();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       setState(() {
-        _isSyncing = false;
+        _syncStatus = SimpleSyncStatus.error;
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+      }
     }
   }
 
-  /// ✅ SIMPLIFICADO: Widget de indicador de sincronización
   Widget _buildSyncIndicator() {
     Color backgroundColor;
     IconData icon;
-    String text;
+    String tooltip;
     Color iconColor;
 
     switch (_syncStatus) {
       case SimpleSyncStatus.syncing:
         backgroundColor = Colors.blue.shade100;
         icon = Icons.sync;
-        text = 'Sincronizando...';
+        tooltip = 'Sincronizando...';
         iconColor = Colors.blue.shade700;
         break;
       case SimpleSyncStatus.pending:
         backgroundColor = Colors.orange.shade100;
         icon = _pendingReports > 0 ? Icons.cloud_upload : Icons.cloud_off;
-        text = _pendingReports > 0 ? '$_pendingReports' : 'Offline';
+        tooltip = _pendingReports > 0
+            ? '$_pendingReports reporte(s) pendiente(s)'
+            : 'Sin conexión';
         iconColor = Colors.orange.shade700;
         break;
       case SimpleSyncStatus.error:
         backgroundColor = Colors.red.shade100;
         icon = Icons.error;
-        text = 'Error';
+        tooltip = 'Error de sincronización';
         iconColor = Colors.red.shade700;
         break;
       case SimpleSyncStatus.synced:
       default:
         backgroundColor = Colors.green.shade100;
         icon = Icons.check_circle;
-        text = 'Sincronizado';
+        tooltip = 'Sincronizado';
         iconColor = Colors.green.shade700;
         break;
     }
 
-    return GestureDetector(
-      onTap: _syncStatus == SimpleSyncStatus.syncing ? null : _sincronizarManualmente,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: iconColor),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_syncStatus == SimpleSyncStatus.syncing)
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: _syncStatus == SimpleSyncStatus.syncing ? null : _sincronizarManualmente,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: iconColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_syncStatus == SimpleSyncStatus.syncing)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                  ),
+                )
+              else
+                Icon(icon, size: 16, color: iconColor),
+              if (_pendingReports > 0 && _syncStatus == SimpleSyncStatus.pending) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: iconColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    '$_pendingReports',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-              )
-            else
-              Icon(icon, size: 16, color: iconColor),
-            if (_pendingReports > 0 && _syncStatus == SimpleSyncStatus.pending) ...[
-              const SizedBox(width: 4),
-              Text(
-                '$_pendingReports',
-                style: TextStyle(
-                  color: iconColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// ✅ SIMPLIFICADO: Widget de información del usuario
   Widget _buildUserInfo() {
     if (_currentUser == null || _currentUser!.groups.isEmpty) {
       return const SizedBox.shrink();
@@ -371,7 +356,6 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            // Muestra el tipo de operador si existe, si no el grupo
             _tipoOperador.isNotEmpty ? _tipoOperador : _currentUser!.groups.join(', '),
             style: const TextStyle(
               fontSize: 11,
@@ -381,7 +365,7 @@ class _HomePageState extends State<HomePage> {
           ),
           if (_tipoOperador.isNotEmpty)
             Text(
-              _currentUser!.username, // Muestra el username debajo
+              _currentUser!.username,
               style: const TextStyle(
                 fontSize: 10,
                 color: Colors.white70,
@@ -392,7 +376,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ✅ SIMPLIFICADO: Logout
   Future<void> _logout() async {
     final confirmarSalida = await AlertHelper.mostrarDialogoDeSalida(context);
 

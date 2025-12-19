@@ -47,7 +47,7 @@ class SimpleSyncIndicator extends StatelessWidget {
 
   Future<Map<String, dynamic>> _getSyncInfo(ReporteSyncManager syncManager) async {
     try {
-      final tieneConexion = await syncManager.tieneConexionInternet();
+      final tieneConexion = await syncManager.verificarConexion();
       final stats = await syncManager.obtenerEstadisticas();
 
       return {

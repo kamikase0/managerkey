@@ -1,3 +1,6 @@
+// lib/database/database_helper.dart
+
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:manager_key/models/reporte_diario_local.dart';
@@ -8,12 +11,16 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   static Database? _database;
-  static const int _databaseVersion = 4;
+  // ✅ PASO 1: Incrementar la versión para forzar la ejecución de onUpgrade.
+  static const int _databaseVersion = 10;
 
-  // Nombre de la tabla
+  // Nombres de las tablas
   static const String tableReportes = 'reportes_diarios';
+  static const String tableOperadores = 'operadores';
+  static const String tablePuntos = 'puntos_empadronamiento';
+  static const String tableUbicaciones = 'ubicaciones';
 
-  // Columnas de la tabla
+  // Columnas de la tabla (schema actualizado y correcto)
   static const String columnId = 'id';
   static const String columnIdServer = 'id_server';
   static const String columnContadorInicialR = 'contador_inicial_r';
@@ -47,36 +54,64 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'manager_key.db');
+    debugPrint("📁 Ruta de BD: $path");
+
+    // 🔥 SOLUCIÓN TEMPORAL: Eliminar BD para forzar recreación
+    // try {
+    //   await deleteDatabase(path);
+    //   debugPrint("🗑️ ✅ Base de datos anterior ELIMINADA");
+    // } catch (e) {
+    //   debugPrint("⚠️ Error eliminando BD (quizás no existía): $e");
+    // }
 
     return await openDatabase(
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
-      onConfigure: (db) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-      },
     );
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // Crear tabla de operadores
+    debugPrint("✅ Creando base de datos desde cero (onCreate) v$version...");
+    await _createTables(db);
+  }
+
+  // ✅ PASO 2: LÓGICA DE MIGRACIÓN DESTRUCTIVA (La solución definitiva)
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    debugPrint("🔄 Actualizando BD de v$oldVersion a v$newVersion...");
+
+    // Para desarrollo: eliminar todo y recrear
+    if (oldVersion < 10) {
+      await _dropTables(db);
+      await _createTables(db);
+      debugPrint("✅ Base de datos recreada completamente");
+    }
+  }
+
+  Future<void> _dropTables(Database db) async {
+    await db.execute('DROP TABLE IF EXISTS $tableReportes');
+    await db.execute('DROP TABLE IF EXISTS $tableOperadores');
+    await db.execute('DROP TABLE IF EXISTS $tablePuntos');
+    await db.execute('DROP TABLE IF EXISTS $tableUbicaciones');
+  }
+
+  Future<void> _createTables(Database db) async {
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS operadores(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+      CREATE TABLE $tableOperadores(
+        id INTEGER PRIMARY KEY,
         nombre TEXT NOT NULL,
         usuario TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
-        activo INTEGER DEFAULT 1,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        activo INTEGER DEFAULT 1
       )
     ''');
 
-    // Crear tabla principal de reportes
     await db.execute('''
       CREATE TABLE $tableReportes(
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
-        $columnIdServer INTEGER,
+        $columnIdServer INTEGER UNIQUE,
+        $columnIdOperador INTEGER NOT NULL,
         $columnContadorInicialR TEXT NOT NULL,
         $columnContadorFinalR TEXT NOT NULL,
         $columnSaltosenR INTEGER DEFAULT 0,
@@ -89,7 +124,6 @@ class DatabaseHelper {
         $columnObservaciones TEXT,
         $columnIncidencias TEXT,
         $columnEstado TEXT NOT NULL DEFAULT 'pendiente',
-        $columnIdOperador INTEGER NOT NULL,
         $columnEstacionId INTEGER,
         $columnNroEstacion TEXT,
         $columnFechaCreacion TEXT NOT NULL,
@@ -101,113 +135,52 @@ class DatabaseHelper {
       )
     ''');
 
-    // Crear índices
-    await _createIndexes(db);
+    await db.execute('''
+      CREATE TABLE $tablePuntos (
+        id INTEGER PRIMARY KEY,
+        provincia TEXT,
+        punto_de_empadronamiento TEXT
+      )
+    ''');
 
-    // Insertar datos de ejemplo
+    await db.execute('''
+      CREATE TABLE $tableUbicaciones (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          timestamp TEXT NOT NULL
+      )
+    ''');
+
+    await _createIndexes(db);
     await _insertSampleData(db);
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Implementación de migración...
-    // (Mantén tu implementación actual aquí)
-    //     // Migración paso a paso
-    if (oldVersion < 4) {
-      await _migrateV3toV4(db);
-    }
-  }
-
   Future<void> _createIndexes(Database db) async {
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_fecha_reporte ON $tableReportes($columnFechaReporte)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_id_operador ON $tableReportes($columnIdOperador)');
+    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON $tableReportes($columnIdServer)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_estado ON $tableReportes($columnEstado)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_sincronizar ON $tableReportes($columnSincronizar)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_fecha_creacion ON $tableReportes($columnFechaCreacion)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_usuario ON operadores(usuario)');
   }
 
   Future<void> _insertSampleData(Database db) async {
     await db.execute('''
-      INSERT OR IGNORE INTO operadores (id, nombre, usuario, password)
-      VALUES (1, 'Operador Principal', 'operador', '123456')
+      INSERT OR IGNORE INTO $tableOperadores (id, nombre, usuario, password)
+      VALUES (408, 'J. Quisbert A.', 'j.quisbert.a', '123')
     ''');
   }
 
-  // ========== MÉTODOS CRUD CORREGIDOS ==========
+  // --- El resto de los métodos CRUD y de negocio no necesitan cambios ---
 
-  // Insertar reporte usando toLocalMap()
   Future<int> insertReporte(ReporteDiarioLocal reporte) async {
     final db = await database;
-
-    if (reporte.idOperador == 0) {
-      throw Exception('id_operador es requerido para guardar el reporte');
-    }
-
     return await db.insert(tableReportes, reporte.toLocalMap());
   }
 
-  // Obtener reporte por ID
-  Future<ReporteDiarioLocal?> getReporte(int id) async {
-    final db = await database;
-    final maps = await db.query(
-      tableReportes,
-      where: '$columnId = ?',
-      whereArgs: [id],
-    );
-
-    if (maps.isNotEmpty) {
-      return _mapToReporteDiarioLocal(maps.first);
-    }
-    return null;
-  }
-
-  // Obtener todos los reportes
-  Future<List<ReporteDiarioLocal>> getAllReportes() async {
-    final db = await database;
-    final maps = await db.query(
-      tableReportes,
-      orderBy: '$columnFechaCreacion DESC',
-    );
-
-    return maps.map((map) => _mapToReporteDiarioLocal(map)).toList();
-  }
-
-  // Obtener reportes por estado
-  Future<List<ReporteDiarioLocal>> getReportesByEstado(String estado) async {
-    final db = await database;
-    final maps = await db.query(
-      tableReportes,
-      where: '$columnEstado = ?',
-      whereArgs: [estado],
-      orderBy: '$columnFechaCreacion DESC',
-    );
-
-    return maps.map((map) => _mapToReporteDiarioLocal(map)).toList();
-  }
-
-  // Obtener reportes pendientes
-  Future<List<ReporteDiarioLocal>> getReportesPendientes() async {
-    return await getReportesByEstado('pendiente');
-  }
-
-  // Obtener reportes fallidos
-  Future<List<ReporteDiarioLocal>> getReportesFallidos() async {
-    return await getReportesByEstado('fallido');
-  }
-
-  // Obtener reportes sincronizados
-  Future<List<ReporteDiarioLocal>> getReportesSincronizados() async {
-    return await getReportesByEstado('sincronizado');
-  }
-
-  // Actualizar reporte
   Future<int> updateReporte(ReporteDiarioLocal reporte) async {
     final db = await database;
-
     if (reporte.id == null) {
-      throw Exception('El reporte no tiene ID para actualizar');
+      throw Exception('El reporte debe tener un ID local para ser actualizado');
     }
-
     return await db.update(
       tableReportes,
       reporte.toLocalMap(),
@@ -216,52 +189,15 @@ class DatabaseHelper {
     );
   }
 
-  // Eliminar reporte
-  Future<int> deleteReporte(int id) async {
+  Future<void> insertarOIgnorarReporte(ReporteDiarioLocal reporte) async {
     final db = await database;
-    return await db.delete(
+    await db.insert(
       tableReportes,
-      where: '$columnId = ?',
-      whereArgs: [id],
+      reporte.toLocalMap(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
     );
   }
 
-  // Marcar reporte como sincronizado
-  Future<int> marcarComoSincronizado(int id, int serverId) async {
-    final db = await database;
-    final now = DateTime.now().toIso8601String();
-
-    return await db.update(
-      tableReportes,
-      {
-        columnEstado: 'sincronizado',
-        columnIdServer: serverId,
-        columnFechaSincronizacion: now,
-      },
-      where: '$columnId = ?',
-      whereArgs: [id],
-    );
-  }
-
-  // Marcar reporte como fallido
-  Future<int> marcarComoFallido(int id) async {
-    final db = await database;
-    final now = DateTime.now().toIso8601String();
-
-    return await db.update(
-      tableReportes,
-      {
-        columnEstado: 'fallido',
-        columnFechaSincronizacion: now,
-      },
-      where: '$columnId = ?',
-      whereArgs: [id],
-    );
-  }
-
-  // ========== MÉTODOS ESPECÍFICOS POR OPERADOR ==========
-
-  // Obtener reportes por operador
   Future<List<ReporteDiarioLocal>> getReportesPorOperador(int idOperador) async {
     final db = await database;
     final maps = await db.query(
@@ -270,37 +206,64 @@ class DatabaseHelper {
       whereArgs: [idOperador],
       orderBy: '$columnFechaCreacion DESC',
     );
-
-    return maps.map((map) => _mapToReporteDiarioLocal(map)).toList();
+    return maps.map((map) => ReporteDiarioLocal.fromLocalMap(map)).toList();
   }
 
-  // Obtener reportes pendientes por operador
-  Future<List<ReporteDiarioLocal>> getReportesPendientesPorOperador(int idOperador) async {
+  Future<List<ReporteDiarioLocal>> getReportesPendientes() async {
     final db = await database;
     final maps = await db.query(
       tableReportes,
-      where: '$columnEstado = ? AND $columnIdOperador = ?',
-      whereArgs: ['pendiente', idOperador],
+      where: '$columnEstado = ?',
+      whereArgs: ['pendiente'],
       orderBy: '$columnFechaCreacion ASC',
     );
-
-    return maps.map((map) => _mapToReporteDiarioLocal(map)).toList();
+    return maps.map((map) => ReporteDiarioLocal.fromLocalMap(map)).toList();
   }
 
-  // Obtener reportes sincronizados por operador
-  Future<List<ReporteDiarioLocal>> getReportesSincronizadosPorOperador(int idOperador) async {
+  Future<void> eliminarReportesAntiguosSincronizados(int idOperador, List<int> idsDelServidor) async {
+    if (idsDelServidor.isEmpty) return;
     final db = await database;
-    final maps = await db.query(
+    String placeholders = idsDelServidor.map((_) => '?').join(',');
+    await db.delete(
       tableReportes,
-      where: '$columnEstado = ? AND $columnIdOperador = ?',
-      whereArgs: ['sincronizado', idOperador],
-      orderBy: '$columnFechaCreacion DESC',
+      where: '$columnIdOperador = ? AND $columnEstado = ? AND $columnIdServer NOT IN ($placeholders)',
+      whereArgs: [idOperador, 'sincronizado', ...idsDelServidor],
     );
-
-    return maps.map((map) => _mapToReporteDiarioLocal(map)).toList();
   }
 
-  // Obtener reporte por fecha y operador
+  Future<void> eliminarTodosLosReportesSincronizadosPorOperador(int idOperador) async {
+    final db = await database;
+    await db.delete(
+      tableReportes,
+      where: '$columnIdOperador = ? AND $columnEstado = ?',
+      whereArgs: [idOperador, 'sincronizado'],
+    );
+  }
+
+  Future<Map<String, dynamic>> getEstadisticasPorOperador(int idOperador) async {
+    final db = await database;
+    final totalResult = await db.rawQuery('SELECT COUNT(*) as total FROM $tableReportes WHERE $columnIdOperador = ?', [idOperador]);
+    final sincronizadosResult = await db.rawQuery('SELECT COUNT(*) as sincronizados FROM $tableReportes WHERE $columnIdOperador = ? AND $columnEstado = ?', [idOperador, 'sincronizado']);
+    final pendientesResult = await db.rawQuery('SELECT COUNT(*) as pendientes FROM $tableReportes WHERE $columnIdOperador = ? AND $columnEstado = ?', [idOperador, 'pendiente']);
+    final fallidosResult = await db.rawQuery('SELECT COUNT(*) as fallidos FROM $tableReportes WHERE $columnIdOperador = ? AND $columnEstado = ?', [idOperador, 'fallido']);
+    final total = totalResult.first['total'] as int;
+    final sincronizados = sincronizadosResult.first['sincronizados'] as int;
+    final pendientes = pendientesResult.first['pendientes'] as int;
+    final fallidos = fallidosResult.first['fallidos'] as int;
+    return {
+      'total': total,
+      'sincronizados': sincronizados,
+      'pendientes': pendientes,
+      'fallidos': fallidos,
+    };
+  }
+
+  // lib/database/database_helper.dart
+// AÑADE ESTOS MÉTODOS AL FINAL DE TU CLASE DatabaseHelper
+
+// (Pega esto después del método getEstadisticasPorOperador)
+
+  /// Obtener reporte por fecha y operador
   Future<ReporteDiarioLocal?> getReporteByFecha(String fecha, int idOperador) async {
     final db = await database;
     final maps = await db.query(
@@ -310,188 +273,92 @@ class DatabaseHelper {
       limit: 1,
     );
 
-    if (maps.isNotEmpty) {
-      return _mapToReporteDiarioLocal(maps.first);
-    }
-    return null;
+    if (maps.isEmpty) return null;
+    return ReporteDiarioLocal.fromLocalMap(maps.first);
   }
 
-  // Verificar si ya existe un reporte para la fecha y operador
+  /// Verificar si existe un reporte para una fecha específica
   Future<bool> existeReporteParaFecha(String fecha, int idOperador) async {
+    final reporte = await getReporteByFecha(fecha, idOperador);
+    return reporte != null;
+  }
+
+  /// Obtener reporte por ID local
+  Future<ReporteDiarioLocal?> getReporteById(int id) async {
     final db = await database;
-    final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM $tableReportes WHERE $columnFechaReporte = ? AND $columnIdOperador = ?',
-      [fecha, idOperador],
+    final maps = await db.query(
+      tableReportes,
+      where: '$columnId = ?',
+      whereArgs: [id],
+      limit: 1,
     );
 
-    return (result.first['count'] as int) > 0;
+    if (maps.isEmpty) return null;
+    return ReporteDiarioLocal.fromLocalMap(maps.first);
   }
 
-  // Obtener estadísticas por operador
-  Future<Map<String, dynamic>> getEstadisticasPorOperador(int idOperador) async {
+  /// Marcar reporte como sincronizado (método simplificado)
+  Future<int> marcarComoSincronizado(int idLocal, int idServer) async {
     final db = await database;
-
-    // Total reportes
-    final totalResult = await db.rawQuery(
-      'SELECT COUNT(*) as total FROM $tableReportes WHERE $columnIdOperador = ?',
-      [idOperador],
-    );
-    final total = totalResult.first['total'] as int;
-
-    // Reportes sincronizados
-    final sincronizadosResult = await db.rawQuery(
-      'SELECT COUNT(*) as sincronizados FROM $tableReportes WHERE $columnIdOperador = ? AND $columnEstado = ?',
-      [idOperador, 'sincronizado'],
-    );
-    final sincronizados = sincronizadosResult.first['sincronizados'] as int;
-
-    // Reportes pendientes
-    final pendientesResult = await db.rawQuery(
-      'SELECT COUNT(*) as pendientes FROM $tableReportes WHERE $columnIdOperador = ? AND $columnEstado = ?',
-      [idOperador, 'pendiente'],
-    );
-    final pendientes = pendientesResult.first['pendientes'] as int;
-
-    // Reportes fallidos
-    final fallidosResult = await db.rawQuery(
-      'SELECT COUNT(*) as fallidos FROM $tableReportes WHERE $columnIdOperador = ? AND $columnEstado = ?',
-      [idOperador, 'fallido'],
-    );
-    final fallidos = fallidosResult.first['fallidos'] as int;
-
-    return {
-      'total': total,
-      'sincronizados': sincronizados,
-      'pendientes': pendientes,
-      'fallidos': fallidos,
-      'porcentajeSincronizado': total > 0 ? (sincronizados / total * 100).toStringAsFixed(1) : '0.0',
-    };
-  }
-
-  // ========== MÉTODOS DE SINCRONIZACIÓN ==========
-
-  // Guardar reportes del servidor
-  Future<void> guardarReportesServidor(List<Map<String, dynamic>> reportes) async {
-    final db = await database;
-    final batch = db.batch();
-
-    for (var reporte in reportes) {
-      final idServer = reporte['id'] as int?;
-
-      if (idServer != null) {
-        // Verificar si ya existe
-        final existente = await db.query(
-          tableReportes,
-          where: '$columnIdServer = ?',
-          whereArgs: [idServer],
-          limit: 1,
-        );
-
-        if (existente.isEmpty) {
-          batch.insert(tableReportes, {
-            columnIdServer: idServer,
-            columnFechaReporte: reporte['fecha_reporte'],
-            columnContadorInicialC: reporte['contador_inicial_c'],
-            columnContadorFinalC: reporte['contador_final_c'],
-            // CORRECCIÓN 1: Usar 'registro_c' del servidor para la columna 'contador_c'
-            columnContadorC: (reporte['registro_c'] ?? 0).toString(),
-            // CORRECCIÓN 2: Añadir 'saltosen_c'
-            columnSaltosenC: reporte['saltosen_c'] ?? 0,
-            columnContadorInicialR: reporte['contador_inicial_r'],
-            columnContadorFinalR: reporte['contador_final_r'],
-            // CORRECCIÓN 3: Usar 'registro_r' del servidor para la columna 'contador_r'
-            columnContadorR: (reporte['registro_r'] ?? 0).toString(),
-            // CORRECCIÓN 4: Añadir 'saltosen_r'
-            columnSaltosenR: reporte['saltosen_r'] ?? 0,
-            columnIncidencias: reporte['incidencias'],
-            columnObservaciones: reporte['observaciones'],
-            // CORRECCIÓN 5: Usar el estado del servidor o 'sincronizado' como default
-            columnEstado: reporte['estado'] ?? 'sincronizado',
-            columnIdOperador: reporte['operador'],
-            columnEstacionId: reporte['estacion'],
-            columnFechaCreacion: reporte['fecha_registro'] ?? DateTime.now().toIso8601String(),
-            columnFechaSincronizacion: DateTime.now().toIso8601String(),
-            // CORRECCIÓN 6: Usar nombres de campo en minúsculas (snake_case)
-            columnObservacionC: reporte['observacion_c'],
-            columnObservacionR: reporte['observacion_r'],
-            columnCentroEmpadronamiento: reporte['centro_empadronamiento'],
-            // CORRECCIÓN 7: Añadir 'sincronizar'
-            columnSincronizar: reporte['sincronizar'] ?? 0, // Asume 0 si no viene
-          });
-        }
-      }
-    }
-
-    await batch.commit();
-    print('💾 Guardados ${reportes.length} reportes del servidor');
-  }
-
-  // Método auxiliar para convertir Map a ReporteDiarioLocal
-  ReporteDiarioLocal _mapToReporteDiarioLocal(Map<String, dynamic> map) {
-    return ReporteDiarioLocal(
-      id: map['id'] as int?,
-      idServer: map['id_server'] as int?,
-      contadorInicialR: map['contador_inicial_r'] as String? ?? '',
-      contadorFinalR: map['contador_final_r'] as String? ?? '',
-      saltosenR: map['saltosen_r'] as int? ?? 0,
-      contadorR: map['contador_r'] as String? ?? '0',
-      contadorInicialC: map['contador_inicial_c'] as String? ?? '',
-      contadorFinalC: map['contador_final_c'] as String? ?? '',
-      saltosenC: map['saltosen_c'] as int? ?? 0,
-      contadorC: map['contador_c'] as String? ?? '0',
-      fechaReporte: map['fecha_reporte'] as String? ?? '',
-      observaciones: map['observaciones'] as String?,
-      incidencias: map['incidencias'] as String?,
-      estado: map['estado'] as String? ?? 'pendiente',
-      idOperador: map['id_operador'] as int? ?? 0,
-      estacionId: map['estacion_id'] as int?,
-      nroEstacion: map['nro_estacion'] as String?,
-      fechaCreacion: map['fecha_creacion'] != null
-          ? DateTime.parse(map['fecha_creacion'] as String)
-          : DateTime.now(),
-      fechaSincronizacion: map['fecha_sincronizacion'] != null
-          ? DateTime.parse(map['fecha_sincronizacion'] as String)
-          : null,
-      observacionC: map['observacion_c'] as String?,
-      observacionR: map['observacion_r'] as String?,
-      centroEmpadronamiento: map['centro_empadronamiento'] as int?,
+    return await db.update(
+      tableReportes,
+      {
+        columnIdServer: idServer,
+        columnEstado: 'sincronizado',
+        columnFechaSincronizacion: DateTime.now().toIso8601String(),
+        columnSincronizar: 0,
+      },
+      where: '$columnId = ?',
+      whereArgs: [idLocal],
     );
   }
 
-  // Métodos de conveniencia para compatibilidad
-  Future<int> insertReporteDiario(ReporteDiarioLocal reporte) async {
-    return await insertReporte(reporte);
-  }
-
-  Future<int> updateReporteDiario(ReporteDiarioLocal reporte) async {
-    return await updateReporte(reporte);
-  }
-
+  /// Obtener total de reportes por operador
   Future<List<ReporteDiarioLocal>> getTotalReportesPorOperador(int idOperador) async {
-    return await getReportesPorOperador(idOperador);
+    final db = await database;
+    final maps = await db.query(
+      tableReportes,
+      where: '$columnIdOperador = ?',
+      whereArgs: [idOperador],
+    );
+    return maps.map((map) => ReporteDiarioLocal.fromLocalMap(map)).toList();
   }
 
-  // Métodos de utilidad
+  /// Obtener reportes sincronizados por operador
+  Future<List<ReporteDiarioLocal>> getReportesSincronizadosPorOperador(int idOperador) async {
+    final db = await database;
+    final maps = await db.query(
+      tableReportes,
+      where: '$columnIdOperador = ? AND $columnEstado = ?',
+      whereArgs: [idOperador, 'sincronizado'],
+    );
+    return maps.map((map) => ReporteDiarioLocal.fromLocalMap(map)).toList();
+  }
+
+  /// Obtener reportes pendientes por operador
+  Future<List<ReporteDiarioLocal>> getReportesPendientesPorOperador(int idOperador) async {
+    final db = await database;
+    final maps = await db.query(
+      tableReportes,
+      where: '$columnIdOperador = ? AND $columnEstado = ?',
+      whereArgs: [idOperador, 'pendiente'],
+    );
+    return maps.map((map) => ReporteDiarioLocal.fromLocalMap(map)).toList();
+  }
+
+  /// Limpiar base de datos (solo para desarrollo)
   Future<void> clearDatabase() async {
     final db = await database;
     await db.delete(tableReportes);
-    await db.delete('operadores');
+    debugPrint('🗑️ Tabla de reportes limpiada');
   }
 
+  /// Cerrar conexión (SQLite lo maneja automáticamente, pero por si acaso)
   Future<void> close() async {
-    final db = await database;
-    await db.close();
-  }
-
-    Future<void> _migrateV3toV4(Database db) async {
-    try {
-      // Crear nuevos índices
-      await _createIndexes(db);
-      print('✅ Migración v3->v4 completada');
-    } catch (e) {
-      print('❌ Error en migración v3->v4: $e');
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+      debugPrint('🔒 Conexión a base de datos cerrada');
     }
   }
-
-  static DatabaseHelper get instance => _instance;
 }
